@@ -1,0 +1,790 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ─── Auth & RBAC ───────────────────────────────────────────────
+
+enum SystemRole {
+  SUPER_ADMIN
+  MANAGER
+  ACCOUNT_MANAGER
+  DESIGNER
+  SALES_EXECUTIVE
+  DEVELOPER
+  FINANCE_EXECUTIVE
+  HR
+  CUSTOM
+}
+
+model User {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  passwordHash   String
+  name           String
+  phone          String?
+  department     String?
+  avatarUrl      String?
+  systemRole     SystemRole @default(DEVELOPER)
+  customRoleId   String?
+  customRole     Role?     @relation(fields: [customRoleId], references: [id])
+  isActive       Boolean   @default(true)
+  twoFactorEnabled Boolean @default(false)
+  trustedDevices Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  loginHistory     LoginHistory[]
+  attendances      Attendance[]
+  leaveRequests    LeaveRequest[]
+  assignedTasks    Task[]           @relation("TaskAssignee")
+  createdTasks     Task[]           @relation("TaskCreator")
+  timeEntries      TimeEntry[]
+  assignedLeads    Lead[]           @relation("LeadOwner")
+  managedProjects  Project[]        @relation("ProjectManager")
+  contentPosts     ContentPost[]    @relation("ContentAssignee")
+  employeeDocs     EmployeeDocument[]
+  performanceReviews PerformanceReview[]
+  auditLogs        AuditLog[]
+  sessions         Session[]
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  permissions Json     // { module: { view, create, edit, delete } }
+  users       User[]
+  createdAt   DateTime @default(now())
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token        String   @unique
+  expiresAt    DateTime
+  ipAddress    String?
+  userAgent    String?
+  lastActiveAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+}
+
+model LoginHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ipAddress String?
+  device    String?
+  success   Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model PasswordReset {
+  id        String   @id @default(cuid())
+  email     String
+  otp       String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// ─── Attendance & HR ───────────────────────────────────────────
+
+model Attendance {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checkInAt   DateTime
+  checkOutAt  DateTime?
+  latitude    Float?
+  longitude   Float?
+  isLate      Boolean   @default(false)
+  isEarlyExit Boolean   @default(false)
+  overtimeMin Int       @default(0)
+  date        DateTime  @default(now())
+}
+
+model LeaveRequest {
+  id         String      @id @default(cuid())
+  userId     String
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       LeaveType
+  startDate  DateTime
+  endDate    DateTime
+  reason     String?
+  status     LeaveStatus @default(PENDING)
+  reviewedBy String?
+  createdAt  DateTime    @default(now())
+}
+
+enum LeaveType {
+  CASUAL
+  SICK
+  EARNED
+  UNPAID
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Holiday {
+  id        String   @id @default(cuid())
+  name      String
+  date      DateTime
+  createdAt DateTime @default(now())
+}
+
+model LeaveBalance {
+  id        String @id @default(cuid())
+  userId    String @unique
+  casual    Int    @default(12)
+  sick      Int    @default(10)
+  earned    Int    @default(15)
+}
+
+// ─── Clients & CRM ─────────────────────────────────────────────
+
+enum ClientCategory {
+  RETAINER
+  ONE_TIME
+  LEAD
+  CHURNED
+}
+
+enum ClientHealth {
+  GREEN
+  YELLOW
+  RED
+}
+
+model Client {
+  id            String         @id @default(cuid())
+  companyName   String
+  contactPerson String?
+  phone         String?
+  email         String?
+  billingAddress String?
+  gstin         String?
+  category      ClientCategory @default(LEAD)
+  source        String?
+  health        ClientHealth   @default(GREEN)
+  internalNotes String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  contacts   ClientContact[]
+  documents  ClientDocument[]
+  projects   Project[]
+  leads      Lead[]
+  proposals  Proposal[]
+  agreements Agreement[]
+  invoices   Invoice[]
+  contentPosts ContentPost[]
+  socialAccounts SocialAccount[]
+  contentContracts ContentContract[]
+}
+
+model ClientContact {
+  id        String  @id @default(cuid())
+  clientId  String
+  client    Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name      String
+  role      String?
+  email     String?
+  phone     String?
+  isPrimary Boolean @default(false)
+}
+
+model ClientDocument {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name      String
+  fileUrl   String
+  type      String?
+  createdAt DateTime @default(now())
+}
+
+// ─── Sales Funnel ──────────────────────────────────────────────
+
+enum FunnelStage {
+  LEAD
+  CONTACTED
+  DEMO_GIVEN
+  PROPOSAL_SENT
+  NEGOTIATION
+  WON
+  LOST
+}
+
+model Lead {
+  id            String      @id @default(cuid())
+  title         String
+  companyName   String?
+  contactEmail  String?
+  contactPhone  String?
+  value         Float?
+  stage         FunnelStage @default(LEAD)
+  lostReason    String?
+  followUpAt    DateTime?
+  ownerId       String?
+  owner         User?       @relation("LeadOwner", fields: [ownerId], references: [id])
+  clientId      String?
+  client        Client?     @relation(fields: [clientId], references: [id])
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+// ─── Proposals & Agreements ────────────────────────────────────
+
+enum ProposalStatus {
+  DRAFT
+  SENT
+  VIEWED
+  APPROVED
+  REJECTED
+}
+
+model Proposal {
+  id          String         @id @default(cuid())
+  clientId    String
+  client      Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  title       String
+  templateKey String?
+  status      ProposalStatus @default(DRAFT)
+  subtotal    Float          @default(0)
+  discount    Float          @default(0)
+  total       Float          @default(0)
+  validUntil  DateTime?
+  sentAt      DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  lineItems  ProposalLineItem[]
+  agreements Agreement[]
+}
+
+model ProposalLineItem {
+  id          String   @id @default(cuid())
+  proposalId  String
+  proposal    Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  description String
+  hours       Float?
+  rate        Float
+  amount      Float
+  sortOrder   Int      @default(0)
+}
+
+enum AgreementStatus {
+  DRAFT
+  SENT
+  SIGNED
+  EXPIRED
+}
+
+model Agreement {
+  id          String          @id @default(cuid())
+  clientId    String
+  client      Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  proposalId  String?
+  proposal    Proposal?       @relation(fields: [proposalId], references: [id])
+  title       String
+  content     String
+  version     Int             @default(1)
+  status      AgreementStatus @default(DRAFT)
+  signedAt    DateTime?
+  expiresAt   DateTime?
+  voiceDraft  String?
+  createdAt   DateTime        @default(now())
+}
+
+// ─── Content Contracts ─────────────────────────────────────────
+
+enum DeliverableType {
+  REEL
+  POST
+  CAROUSEL
+  BLOG
+}
+
+enum FestiveCategory {
+  NATIONAL
+  RELIGIOUS
+  CULTURAL
+}
+
+enum DeliverableStatus {
+  PENDING
+  IDEA_ADDED
+  IN_PRODUCTION
+  IN_REVIEW
+  APPROVED
+  PUBLISHED
+}
+
+model ContentContract {
+  id                String   @id @default(cuid())
+  clientId          String
+  client            Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  durationMonths    Int
+  startMonth        String
+  reelsPerMonth     Int      @default(0)
+  postsPerMonth     Int      @default(0)
+  carouselsPerMonth Int      @default(0)
+  blogsPerMonth     Int      @default(0)
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  projects     Project[]
+  deliverables ContentDeliverable[]
+}
+
+model ContentDeliverable {
+  id                String            @id @default(cuid())
+  contractId        String
+  contract          ContentContract   @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  projectId         String
+  project           Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type              DeliverableType
+  month             String
+  scheduledDate     DateTime?
+  editStartDate     DateTime?
+  editEndDate       DateTime?
+  status            DeliverableStatus @default(PENDING)
+  title             String?
+  scriptOrDraft     String?
+  referenceLinks    String?
+  conceptIdeation   String?
+  visualReferences  String?
+  imageReferenceUrl String?
+  captionDraft      String?
+  hashtags          String?
+  internalNotes     String?
+  assetUrl          String?
+  contentPostId     String?
+  sortOrder         Int               @default(0)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  
+  festiveDay        FestiveDay?
+}
+
+model FestiveDay {
+  id                    String              @id @default(cuid())
+  name                  String
+  date                  DateTime
+  category              FestiveCategory     @default(CULTURAL)
+  assignedDeliverableId String?             @unique
+  assignedDeliverable   ContentDeliverable? @relation(fields: [assignedDeliverableId], references: [id])
+  createdAt             DateTime            @default(now())
+}
+
+
+// ─── Projects & Tasks ──────────────────────────────────────────
+
+enum ProjectStatus {
+  IN_PROGRESS
+  ON_HOLD
+  UNDER_REVIEW
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+  BLOCKED
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  name        String
+  clientId    String
+  client      Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  serviceType String?
+  status      ProjectStatus @default(IN_PROGRESS)
+  budget      Float?
+  startDate   DateTime?
+  endDate     DateTime?
+  progress    Int           @default(0)
+  managerId   String?
+  manager     User?         @relation("ProjectManager", fields: [managerId], references: [id])
+  contractId  String?
+  contract    ContentContract? @relation(fields: [contractId], references: [id])
+  tags        String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  tasks        Task[]
+  milestones   Milestone[]
+  timeEntries  TimeEntry[]
+  expenses     Expense[]
+  invoices     Invoice[]
+  deliverables ContentDeliverable[]
+}
+
+model ProjectTemplate {
+  id          String @id @default(cuid())
+  name        String @unique
+  serviceType String
+  tasksJson   Json   // template task definitions
+  createdAt   DateTime @default(now())
+}
+
+model Milestone {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  dueDate     DateTime?
+  completed   Boolean  @default(false)
+  completedAt DateTime?
+}
+
+model Task {
+  id          String       @id @default(cuid())
+  projectId   String
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(MEDIUM)
+  dueDate     DateTime?
+  assigneeId  String?
+  assignee    User?        @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  creatorId   String?
+  creator     User?        @relation("TaskCreator", fields: [creatorId], references: [id])
+  parentId    String?
+  parent      Task?        @relation("SubTasks", fields: [parentId], references: [id])
+  subTasks    Task[]       @relation("SubTasks")
+  sortOrder   Int          @default(0)
+  attachments Json?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  timeEntries   TimeEntry[]
+  comments      TaskComment[]
+  dependsOn     TaskDependency[] @relation("DependentTask")
+  blockedBy     TaskDependency[] @relation("BlockingTask")
+}
+
+model TaskDependency {
+  id          String @id @default(cuid())
+  taskId      String
+  task        Task   @relation("DependentTask", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOnId String
+  dependsOn   Task   @relation("BlockingTask", fields: [dependsOnId], references: [id], onDelete: Cascade)
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
+}
+
+model ProjectActivity {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String?
+  action    String
+  metadata  Json?
+  createdAt DateTime @default(now())
+}
+
+// ─── Time Tracking ───────────────────────────────────────────────
+
+model TimeEntry {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id])
+  taskId      String?
+  task        Task?    @relation(fields: [taskId], references: [id])
+  description String?
+  startedAt   DateTime
+  endedAt     DateTime?
+  minutes     Int      @default(0)
+  billable    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+// ─── Finance ─────────────────────────────────────────────────────
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  VIEWED
+  PAID
+  OVERDUE
+}
+
+enum Currency {
+  INR
+  USD
+  AED
+  GBP
+}
+
+model Invoice {
+  id          String        @id @default(cuid())
+  number      String        @unique
+  clientId    String
+  client      Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     Project?      @relation(fields: [projectId], references: [id])
+  status      InvoiceStatus @default(DRAFT)
+  currency    Currency      @default(INR)
+  subtotal    Float         @default(0)
+  gstRate     Float         @default(18)
+  gstAmount   Float         @default(0)
+  total       Float         @default(0)
+  dueDate     DateTime?
+  isRecurring Boolean       @default(false)
+  sentAt      DateTime?
+  paidAt      DateTime?
+  createdAt   DateTime      @default(now())
+
+  lineItems InvoiceLineItem[]
+  payments  Payment[]
+}
+
+model InvoiceLineItem {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Float   @default(1)
+  rate        Float
+  gstRate     Float   @default(18)
+  amount      Float
+}
+
+model Payment {
+  id        String   @id @default(cuid())
+  invoiceId String
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount    Float
+  method    String?
+  paidAt    DateTime @default(now())
+  reference String?
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id])
+  description String
+  amount      Float
+  category    String?
+  incurredAt  DateTime @default(now())
+}
+
+model PayrollRecord {
+  id          String   @id @default(cuid())
+  userId      String
+  month       Int
+  year        Int
+  baseSalary  Float
+  deductions  Float    @default(0)
+  netPay      Float
+  generatedAt DateTime @default(now())
+}
+
+// ─── Content & Social ────────────────────────────────────────────
+
+enum ContentStatus {
+  IDEA
+  SCRIPTING
+  DESIGNING
+  IN_REVIEW
+  ADMIN_APPROVED
+  SCHEDULED
+  PUBLISHED
+}
+
+enum SocialPlatform {
+  INSTAGRAM
+  FACEBOOK
+  LINKEDIN
+  YOUTUBE
+  TWITTER
+  PINTEREST
+  THREADS
+  TIKTOK
+}
+
+model ContentPost {
+  id           String        @id @default(cuid())
+  clientId     String
+  client       Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  title        String
+  caption      String?
+  script       String?
+  status       ContentStatus @default(IDEA)
+  platforms    String        // JSON array of SocialPlatform
+  scheduledAt  DateTime?
+  publishedAt  DateTime?
+  assigneeId   String?
+  assignee     User?         @relation("ContentAssignee", fields: [assigneeId], references: [id])
+  assetUrl     String?
+  publishProof String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  approvals ContentApproval[]
+}
+
+model ContentApproval {
+  id        String   @id @default(cuid())
+  postId    String
+  post      ContentPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  reviewerId String
+  action    String   // approve | revision
+  comment   String?
+  createdAt DateTime @default(now())
+}
+
+model CaptionLibrary {
+  id       String @id @default(cuid())
+  clientId String
+  title    String
+  caption  String
+}
+
+model HashtagSet {
+  id       String @id @default(cuid())
+  clientId String
+  name     String
+  tags     String
+}
+
+model SocialAccount {
+  id           String @id @default(cuid())
+  clientId     String
+  client       Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  platform     SocialPlatform
+  accountName  String?
+  ayrshareProfileKey String?
+  connected    Boolean @default(false)
+}
+
+// ─── HR Extended ─────────────────────────────────────────────────
+
+model EmployeeDocument {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  fileUrl   String
+  type      String?
+  createdAt DateTime @default(now())
+}
+
+model PerformanceReview {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  period    String
+  rating    Int?
+  notes     String?
+  createdAt DateTime @default(now())
+}
+
+model JobPosting {
+  id          String   @id @default(cuid())
+  title       String
+  department  String?
+  description String
+  status      String   @default("open")
+  createdAt   DateTime @default(now())
+}
+
+model JobApplication {
+  id        String   @id @default(cuid())
+  postingId String
+  name      String
+  email     String
+  stage     String   @default("applied")
+  resumeUrl String?
+  createdAt DateTime @default(now())
+}
+
+model TrainingModule {
+  id           String @id @default(cuid())
+  title        String
+  department   String?
+  contentUrl   String?
+  description  String?
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  createdAt DateTime @default(now())
+}
+
+// ─── System ──────────────────────────────────────────────────────
+
+model AutomationRule {
+  id          String  @id @default(cuid())
+  name        String
+  trigger     String
+  action      String
+  isActive    Boolean @default(true)
+  config      Json?
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  entity    String?
+  entityId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+}
+
+model AgencySettings {
+  id            String  @id @default("default")
+  companyName   String  @default("Blink Beyond")
+  logoUrl       String?
+  primaryColor  String  @default("#6366f1")
+  emailDomain   String?
+  gstNumber     String?
+  defaultGstRate Float  @default(18)
+  sessionTimeoutMin Int @default(60)
+  checkInDeadline String? @default("10:30")
+  darkModeDefault Boolean @default(false)
+}
+
+model ServiceCatalogItem {
+  id          String @id @default(cuid())
+  name        String
+  description String?
+  basePrice   Float
+  unit        String @default("project")
+}

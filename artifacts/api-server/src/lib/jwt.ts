@@ -1,13 +1,16 @@
-import { createHmac, timingSafeEqual } from "crypto";
+import { createHmac, timingSafeEqual, randomBytes } from "crypto";
+
+const _devSecret = randomBytes(48).toString("hex");
 
 function getSecret(): string {
   const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    throw new Error(
-      "JWT_SECRET environment variable is required. Set it in Replit Secrets."
-    );
+  if (secret) return secret;
+  if (process.env.NODE_ENV !== "production") {
+    return _devSecret;
   }
-  return secret;
+  throw new Error(
+    "JWT_SECRET environment variable is required in production. Set it in Replit Secrets."
+  );
 }
 
 const EXPIRY_SECONDS = 60 * 60 * 24 * 7; // 7 days

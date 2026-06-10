@@ -3,13 +3,13 @@ import {
   useListLeads, useCreateLead, useUpdateLead, useDeleteLead,
   useGetPipelineSummary, getListLeadsQueryKey,
 } from "@workspace/api-client-react";
-import type { LeadInput } from "@workspace/api-client-react";
+import type { LeadInput, Lead } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -19,8 +19,9 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { useForm, Controller } from "react-hook-form";
-import { Plus, Trash2, TrendingUp, IndianRupee } from "lucide-react";
+import { Plus, Trash2, TrendingUp, IndianRupee, Lightbulb, Target, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DndContext, useDraggable, useDroppable, DragOverlay, closestCorners, defaultDropAnimationSideEffects } from "@dnd-kit/core";
 
 const STAGES = [
   { key: "LEAD", label: "Lead", color: "border-t-slate-400" },
@@ -32,11 +33,94 @@ const STAGES = [
   { key: "LOST", label: "Lost", color: "border-t-rose-400" },
 ];
 
+function DroppableStage({ stage, stageLeads, activeId, deleteMutation }: any) {
+  const { setNodeRef, isOver } = useDroppable({ id: stage.key });
+  
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "min-w-[220px] max-w-[240px] shrink-0 rounded-xl border border-border border-t-2 bg-muted/30 transition-colors flex flex-col",
+        stage.color,
+        isOver && "ring-2 ring-primary/30 bg-primary/5"
+      )}
+    >
+      <div className="flex items-center justify-between px-3 py-2.5 bg-card/50 rounded-t-xl border-b border-border/50">
+        <p className="text-sm font-semibold">{stage.label}</p>
+        <Badge variant="secondary" className="text-xs px-1.5 py-0">{stageLeads.length}</Badge>
+      </div>
+
+      <div className="p-2 space-y-2 flex-1 min-h-[150px]">
+        {stageLeads.map((lead: any) => (
+          <DraggableLeadCard key={lead.id} lead={lead} deleteMutation={deleteMutation} isActive={activeId === lead.id} />
+        ))}
+
+        {stageLeads.length === 0 && (
+          <div className="flex items-center justify-center py-6 h-full">
+            <div className="flex flex-col items-center text-muted-foreground/40">
+              <TrendingUp className="h-5 w-5 mb-1" />
+              <p className="text-xs">Drop here</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DraggableLeadCard({ lead, deleteMutation, isActive, isOverlay }: any) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: lead.id,
+    data: lead,
+  });
+
+  const style = transform ? {
+    transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+  } : undefined;
+
+  return (
+    <div
+      ref={isOverlay ? undefined : setNodeRef}
+      style={style}
+      {...(isOverlay ? {} : listeners)}
+      {...(isOverlay ? {} : attributes)}
+      className={cn(
+        "bg-card border border-border rounded-lg p-3 shadow-sm group",
+        isOverlay ? "cursor-grabbing ring-2 ring-primary rotate-2 scale-105 shadow-xl" : "cursor-grab active:cursor-grabbing",
+        isDragging && "opacity-0" // Hide original while dragging
+      )}
+    >
+      <div className="flex items-start justify-between gap-1">
+        <p className="text-sm font-semibold line-clamp-2 flex-1">{lead.title}</p>
+        {!isOverlay && (
+          <Button
+            size="icon" variant="ghost" className="h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive z-10 relative"
+            onPointerDown={(e) => { e.stopPropagation(); }}
+            onClick={(e) => { e.stopPropagation(); deleteMutation.mutate({ id: lead.id }); }}
+          >
+            <Trash2 className="h-3 w-3" />
+          </Button>
+        )}
+      </div>
+      {lead.companyName && <p className="text-[11px] text-muted-foreground mt-0.5">{lead.companyName}</p>}
+      {lead.contactName && <p className="text-[11px] text-muted-foreground">{lead.contactName}</p>}
+      {(lead.value ?? 0) > 0 && (
+        <div className="flex items-center gap-1 mt-1.5 text-xs text-primary font-medium">
+          <IndianRupee className="h-3 w-3" />
+          {(lead.value ?? 0).toLocaleString("en-IN")}
+        </div>
+      )}
+      {lead.daysInStage != null && lead.daysInStage > 0 && (
+        <p className="text-[10px] text-muted-foreground mt-1">{lead.daysInStage}d in stage</p>
+      )}
+    </div>
+  );
+}
+
 export default function SalesPage() {
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [dragging, setDragging] = useState<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [activeLead, setActiveLead] = useState<any | null>(null);
 
   const { data: leads, isLoading } = useListLeads();
   const { data: pipeline } = useGetPipelineSummary();
@@ -78,129 +162,155 @@ export default function SalesPage() {
     createMutation.mutate({ data: { ...data, value: data.value ? Number(data.value) : undefined } });
   };
 
-  const handleDrop = (leadId: string, newStage: string) => {
-    updateMutation.mutate({ id: leadId, data: { stage: newStage } });
+  const handleDragStart = (event: any) => {
+    const { active } = event;
+    const lead = leads?.find((l) => l.id === active.id);
+    setActiveLead(lead || null);
+  };
+
+  const handleDragEnd = (event: any) => {
+    const { active, over } = event;
+    setActiveLead(null);
+    if (!over) return;
+
+    const leadId = active.id as string;
+    const newStage = over.id as string;
+    const lead = leads?.find((l) => l.id === leadId);
+    
+    if (lead && lead.stage !== newStage) {
+      // Optimistic update
+      qc.setQueryData(getListLeadsQueryKey(), (old: any) => {
+        if (!old) return old;
+        return old.map((l: any) => l.id === leadId ? { ...l, stage: newStage } : l);
+      });
+      updateMutation.mutate({ id: leadId, data: { stage: newStage } });
+    }
   };
 
   const pipelineTotal = (pipeline ?? []).reduce((sum, s) => sum + (s.totalValue ?? 0), 0);
 
+  const dropAnimation = {
+    sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: "0.5" } } }),
+  };
+
   return (
-    <div className="p-6 animated-fade-in space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold font-heading">Sales Funnel</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {leads?.length ?? 0} leads &nbsp;·&nbsp; Pipeline: ₹{pipelineTotal.toLocaleString("en-IN")}
-          </p>
+    <div className="p-6 animated-fade-in space-y-5 flex gap-6">
+      <div className="flex-1 space-y-5 overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold font-heading">Sales Funnel</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {leads?.length ?? 0} leads &nbsp;·&nbsp; Pipeline: ₹{pipelineTotal.toLocaleString("en-IN")}
+            </p>
+          </div>
+          <Button onClick={() => { reset({ title: "", stage: "LEAD" }); setDialogOpen(true); }} className="gap-2 btn-micro-anim" data-testid="add-lead-btn">
+            <Plus className="h-4 w-4" /> Add Lead
+          </Button>
         </div>
-        <Button onClick={() => { reset({ title: "", stage: "LEAD" }); setDialogOpen(true); }} className="gap-2 btn-micro-anim" data-testid="add-lead-btn">
-          <Plus className="h-4 w-4" /> Add Lead
-        </Button>
-      </div>
 
-      {/* Pipeline summary */}
-      {pipeline && pipeline.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {STAGES.map((stage) => {
-            const s = pipeline.find((p) => p.stage === stage.key);
-            return (
-              <div key={stage.key} className="flex-1 min-w-[120px] rounded-lg border border-border bg-card p-3 text-center shrink-0">
-                <p className="text-[11px] text-muted-foreground font-medium">{stage.label}</p>
-                <p className="text-lg font-bold font-heading mt-0.5">{s?.count ?? 0}</p>
-                {(s?.totalValue ?? 0) > 0 && (
-                  <p className="text-[10px] text-muted-foreground">₹{((s?.totalValue ?? 0) / 1000).toFixed(0)}k</p>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Kanban Board */}
-      {isLoading ? (
-        <div className="flex gap-4 overflow-x-auto pb-2">
-          {STAGES.map((s) => (
-            <div key={s.key} className="min-w-[220px] rounded-xl border border-border bg-muted/30 p-3">
-              <Skeleton className="h-5 w-20 mb-3" />
-              <Skeleton className="h-24 mb-2" />
-              <Skeleton className="h-24" />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="flex gap-3 overflow-x-auto pb-4">
-          {STAGES.map((stage) => {
-            const stageLeads = (leads ?? []).filter((l) => l.stage === stage.key);
-            const isDrop = dropTarget === stage.key;
-            return (
-              <div
-                key={stage.key}
-                className={cn(
-                  "min-w-[220px] max-w-[240px] shrink-0 rounded-xl border border-border border-t-2 bg-muted/30 transition-colors",
-                  stage.color,
-                  isDrop && "ring-2 ring-primary/30 bg-primary/5"
-                )}
-                onDragOver={(e) => { e.preventDefault(); setDropTarget(stage.key); }}
-                onDragLeave={() => setDropTarget(null)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  if (dragging) { handleDrop(dragging, stage.key); setDragging(null); }
-                  setDropTarget(null);
-                }}
-              >
-                <div className="flex items-center justify-between px-3 py-2.5">
-                  <p className="text-sm font-semibold">{stage.label}</p>
-                  <Badge variant="secondary" className="text-xs px-1.5 py-0">{stageLeads.length}</Badge>
-                </div>
-
-                <div className="p-2 space-y-2 min-h-16">
-                  {stageLeads.map((lead) => (
-                    <div
-                      key={lead.id}
-                      draggable
-                      onDragStart={() => setDragging(lead.id)}
-                      onDragEnd={() => setDragging(null)}
-                      className="bg-card border border-border rounded-lg p-3 shadow-sm cursor-grab active:cursor-grabbing group"
-                      data-testid={`lead-card-${lead.id}`}
-                    >
-                      <div className="flex items-start justify-between gap-1">
-                        <p className="text-sm font-semibold line-clamp-2 flex-1">{lead.title}</p>
-                        <Button
-                          size="icon" variant="ghost" className="h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive"
-                          onClick={() => deleteMutation.mutate({ id: lead.id })}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                      {lead.companyName && <p className="text-[11px] text-muted-foreground mt-0.5">{lead.companyName}</p>}
-                      {lead.contactName && <p className="text-[11px] text-muted-foreground">{lead.contactName}</p>}
-                      {(lead.value ?? 0) > 0 && (
-                        <div className="flex items-center gap-1 mt-1.5 text-xs text-primary font-medium">
-                          <IndianRupee className="h-3 w-3" />
-                          {(lead.value ?? 0).toLocaleString("en-IN")}
-                        </div>
-                      )}
-                      {lead.daysInStage != null && lead.daysInStage > 0 && (
-                        <p className="text-[10px] text-muted-foreground mt-1">{lead.daysInStage}d in stage</p>
-                      )}
-                    </div>
-                  ))}
-
-                  {stageLeads.length === 0 && (
-                    <div className="flex items-center justify-center py-4">
-                      <div className="flex flex-col items-center text-muted-foreground/40">
-                        <TrendingUp className="h-5 w-5 mb-1" />
-                        <p className="text-xs">Drop here</p>
-                      </div>
-                    </div>
+        {/* Pipeline summary */}
+        {pipeline && pipeline.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-1 shrink-0">
+            {STAGES.map((stage) => {
+              const s = pipeline.find((p) => p.stage === stage.key);
+              return (
+                <div key={stage.key} className="flex-1 min-w-[120px] rounded-lg border border-border bg-card p-3 text-center shrink-0 shadow-sm">
+                  <p className="text-[11px] text-muted-foreground font-medium">{stage.label}</p>
+                  <p className="text-lg font-bold font-heading mt-0.5">{s?.count ?? 0}</p>
+                  {(s?.totalValue ?? 0) > 0 && (
+                    <p className="text-[10px] text-muted-foreground">₹{((s?.totalValue ?? 0) / 1000).toFixed(0)}k</p>
                   )}
                 </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Kanban Board */}
+        {isLoading ? (
+          <div className="flex gap-4 overflow-x-auto pb-2 flex-1">
+            {STAGES.map((s) => (
+              <div key={s.key} className="min-w-[220px] rounded-xl border border-border bg-muted/30 p-3">
+                <Skeleton className="h-5 w-20 mb-3" />
+                <Skeleton className="h-24 mb-2" />
+                <Skeleton className="h-24" />
               </div>
-            );
-          })}
+            ))}
+          </div>
+        ) : (
+          <DndContext
+            collisionDetection={closestCorners}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="flex gap-3 overflow-x-auto pb-4 flex-1">
+              {STAGES.map((stage) => {
+                const stageLeads = (leads ?? []).filter((l) => l.stage === stage.key);
+                return (
+                  <DroppableStage
+                    key={stage.key}
+                    stage={stage}
+                    stageLeads={stageLeads}
+                    activeId={activeLead?.id}
+                    deleteMutation={deleteMutation}
+                  />
+                );
+              })}
+            </div>
+            <DragOverlay dropAnimation={dropAnimation}>
+              {activeLead ? (
+                <DraggableLeadCard lead={activeLead} isOverlay={true} />
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+        )}
+      </div>
+
+      {/* Smart Sales Tactics Sidebar */}
+      <div className="w-[300px] shrink-0 border-l border-border pl-6 space-y-6 hidden xl:block overflow-y-auto pr-2 custom-scrollbar">
+        <div>
+          <h3 className="font-semibold text-lg flex items-center gap-2 mb-4">
+            <Lightbulb className="h-5 w-5 text-amber-500" /> Smart Tactics
+          </h3>
+          <div className="space-y-4">
+            <Card className="bg-primary/5 border-primary/20 shadow-none">
+              <CardHeader className="pb-2 pt-4 px-4">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2 text-primary">
+                  <Target className="h-4 w-4" /> Finding Leads
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4 text-xs text-muted-foreground space-y-2">
+                <p>1. <strong>LinkedIn Search:</strong> Use advanced search for "Marketing Director" in specific industries.</p>
+                <p>2. <strong>Competitor Analysis:</strong> Check who is interacting with competitor posts.</p>
+                <p>3. <strong>Local Directories:</strong> Find businesses with poor web presence.</p>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-none">
+              <CardHeader className="pb-2 pt-4 px-4">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2 text-blue-600">
+                  <ArrowRight className="h-4 w-4" /> Moving to Demo
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4 text-xs text-muted-foreground space-y-2">
+                <p>Ensure you have mapped their pain points before pitching. Tailor the demo directly to their biggest problem.</p>
+              </CardContent>
+            </Card>
+            
+            <Card className="shadow-none">
+              <CardHeader className="pb-2 pt-4 px-4">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2 text-emerald-600">
+                  <TrendingUp className="h-4 w-4" /> Closing the Deal
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4 text-xs text-muted-foreground space-y-2">
+                <p>Offer a "risk-free" trial period or showcase a highly relevant case study just before the final negotiation.</p>
+              </CardContent>
+            </Card>
+          </div>
         </div>
-      )}
+      </div>
 
       {/* Add Lead Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -242,7 +352,7 @@ export default function SalesPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Email</Label>
-              <Input {...register("email")} type="email" placeholder="lead@company.com" />
+              <Input {...register("contactEmail")} type="email" placeholder="lead@company.com" />
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>

@@ -113,7 +113,9 @@ import AttendancePage from "@/pages/attendance";
 import LeavesPage from "@/pages/leaves";
 import ProposalsPage from "@/pages/proposals";
 import SettingsPage from "@/pages/settings";
+import HawanHubPage from "@/pages/hawan";
 import NotFound from "@/pages/not-found";
+import ClientPortalPage from "@/pages/portal";
 
 // ─── Protected route wrapper ────────────────────────────────────
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -143,6 +145,9 @@ function AppRouter() {
   return (
     <Switch>
       <Route path="/login" component={LoginPage} />
+      <Route path="/portal/:clientId">
+        {({ clientId }) => <ClientPortalPage clientId={clientId!} />}
+      </Route>
       <Route path="/dashboard">
         {() => (
           <ProtectedRoute>
@@ -256,6 +261,15 @@ function AppRouter() {
           <ProtectedRoute>
             <DashboardLayout>
               <ProposalsPage />
+            </DashboardLayout>
+          </ProtectedRoute>
+        )}
+      </Route>
+      <Route path="/hawan">
+        {() => (
+          <ProtectedRoute>
+            <DashboardLayout>
+              <HawanHubPage />
             </DashboardLayout>
           </ProtectedRoute>
         )}

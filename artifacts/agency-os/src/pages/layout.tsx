@@ -12,9 +12,8 @@ import {
 import {
   LayoutDashboard, Users, TrendingUp, FolderKanban, CheckSquare,
   Calendar, FileText, Receipt, ClipboardList, Clock, Umbrella,
-  UserCog, Settings, Sun, Moon, LogOut, ChevronRight, Briefcase,
+  UserCog, Settings, Sun, Moon, LogOut, ChevronRight, Briefcase, Flame,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 interface NavItem {
   label: string;
@@ -42,6 +41,7 @@ const navGroups: NavGroup[] = [
       { label: "Projects", href: "/projects", icon: <FolderKanban className="h-4 w-4" /> },
       { label: "Tasks", href: "/tasks", icon: <CheckSquare className="h-4 w-4" /> },
       { label: "Content Calendar", href: "/content", icon: <Calendar className="h-4 w-4" /> },
+      { label: "Hawan Hub", href: "/hawan", icon: <Flame className="h-4 w-4 text-orange-500" /> },
     ],
   },
   {
@@ -135,18 +135,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* User footer */}
         <div className="border-t border-sidebar-border p-3 shrink-0">
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="w-full flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-sidebar-accent transition-colors">
-                <Avatar className="h-7 w-7 shrink-0">
-                  <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 text-left min-w-0">
-                  <p className="text-sm font-medium text-sidebar-foreground truncate">{user?.name}</p>
-                  <p className="text-[10px] text-muted-foreground truncate">{user?.email}</p>
-                </div>
-              </button>
+            <DropdownMenuTrigger className="w-full flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-sidebar-accent transition-colors">
+              <Avatar className="h-7 w-7 shrink-0">
+                <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 text-left min-w-0">
+                <p className="text-sm font-medium text-sidebar-foreground truncate">{user?.name}</p>
+                <p className="text-[10px] text-muted-foreground truncate">{user?.email}</p>
+              </div>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="top" align="start" className="w-48">
               <DropdownMenuItem onClick={toggleTheme}>

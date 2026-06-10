@@ -3,7 +3,7 @@ import {
   useListProposals, useCreateProposal, useUpdateProposal, useDeleteProposal,
   useListClients, getListProposalsQueryKey,
 } from "@workspace/api-client-react";
-import type { ProposalInput } from "@workspace/api-client-react";
+import type { ProposalInput, ProposalUpdate } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { TiptapEditor } from "@/components/ui/tiptap";
 import { useForm, Controller } from "react-hook-form";
 import { Plus, Trash2, ClipboardList, Pencil } from "lucide-react";
 import { format } from "date-fns";
@@ -37,6 +37,14 @@ const TEMPLATE_CONFIG: Record<string, string> = {
   retainer: "Monthly Retainer",
   branding: "Brand Identity",
 };
+
+interface ProposalFormData {
+  title: string;
+  clientId: string;
+  content?: string;
+  template?: string;
+  status?: string;
+}
 
 export default function ProposalsPage() {
   const qc = useQueryClient();
@@ -79,7 +87,7 @@ export default function ProposalsPage() {
     },
   });
 
-  const { register, handleSubmit, control, reset } = useForm<ProposalInput>({
+  const { register, handleSubmit, control, reset } = useForm<ProposalFormData>({
     defaultValues: { title: "", clientId: "", status: "DRAFT", template: "social" },
   });
 
@@ -95,11 +103,12 @@ export default function ProposalsPage() {
     setDialogOpen(true);
   };
 
-  const onSubmit = (data: ProposalInput) => {
+  const onSubmit = (data: ProposalFormData) => {
     if (editId) {
-      updateMutation.mutate({ id: editId, data });
+      updateMutation.mutate({ id: editId, data: data as ProposalUpdate });
     } else {
-      createMutation.mutate({ data });
+      const { status, ...inputData } = data;
+      createMutation.mutate({ data: inputData });
     }
   };
 
@@ -120,7 +129,7 @@ export default function ProposalsPage() {
         </Button>
       </div>
 
-      <Select value={statusFilter} onValueChange={setStatusFilter}>
+      <Select value={statusFilter} onValueChange={(val) => setStatusFilter(val ?? "ALL")}>
         <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
         <SelectContent>
           <SelectItem value="ALL">All Statuses</SelectItem>
@@ -166,7 +175,7 @@ export default function ProposalsPage() {
                     <td className="px-4 py-3">
                       <Select
                         value={p.status ?? "DRAFT"}
-                        onValueChange={(v) => updateMutation.mutate({ id: p.id, data: { status: v } })}
+                        onValueChange={(v) => { if (v) updateMutation.mutate({ id: p.id, data: { status: v } }); }}
                       >
                         <SelectTrigger className="h-7 text-xs w-32 border-0 bg-transparent p-0 shadow-none focus:ring-0">
                           <Badge variant="secondary" className={cn("text-xs cursor-pointer", sc.className)}>
@@ -250,8 +259,18 @@ export default function ProposalsPage() {
               )} />
             </div>
             <div className="space-y-1.5">
-              <Label>Content</Label>
-              <Textarea {...register("content")} rows={8} placeholder="Write the proposal content here..." data-testid="proposal-content" />
+              <Label>Content (Live Document View)</Label>
+              <Controller
+                control={control}
+                name="content"
+                render={({ field }) => (
+                  <TiptapEditor
+                    value={field.value ?? ""}
+                    onChange={field.onChange}
+                    placeholder="Write the proposal content here... This acts as a live document."
+                  />
+                )}
+              />
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>

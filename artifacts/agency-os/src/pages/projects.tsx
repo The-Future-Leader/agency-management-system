@@ -39,6 +39,19 @@ const PRIORITY_CONFIG: Record<string, { label: string; className: string }> = {
   URGENT: { label: "Urgent", className: "bg-rose-100 text-rose-700" },
 };
 
+interface ProjectFormData {
+  name: string;
+  description?: string;
+  clientId?: string;
+  type?: string;
+  status?: string;
+  priority?: string;
+  startDate?: string;
+  endDate?: string;
+  budget?: number;
+  progress?: number;
+}
+
 export default function ProjectsPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
@@ -82,7 +95,7 @@ export default function ProjectsPage() {
     },
   });
 
-  const { register, handleSubmit, control, reset } = useForm<ProjectInput>({
+  const { register, handleSubmit, control, reset } = useForm<ProjectFormData>({
     defaultValues: { name: "", status: "NOT_STARTED", priority: "MEDIUM", progress: 0 },
   });
 
@@ -100,16 +113,18 @@ export default function ProjectsPage() {
       priority: p.priority ?? "MEDIUM",
       progress: p.progress ?? 0,
       clientId: p.clientId ?? undefined,
+      startDate: p.startDate ? p.startDate.split("T")[0] : undefined,
+      endDate: p.endDate ? p.endDate.split("T")[0] : undefined,
     });
     setDialogOpen(true);
   };
 
-  const onSubmit = (data: ProjectInput) => {
-    const payload = { ...data, progress: Number(data.progress) };
+  const onSubmit = (data: ProjectFormData) => {
     if (editId) {
-      updateMutation.mutate({ id: editId, data: payload });
+      updateMutation.mutate({ id: editId, data: { ...data, progress: Number(data.progress || 0) } });
     } else {
-      createMutation.mutate({ data: payload });
+      const { progress, ...inputData } = data;
+      createMutation.mutate({ data: inputData });
     }
   };
 
@@ -141,7 +156,7 @@ export default function ProjectsPage() {
             className="pl-9"
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter} onValueChange={(val) => setStatusFilter(val ?? "ALL")}>
           <SelectTrigger className="w-44">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
@@ -210,12 +225,12 @@ export default function ProjectsPage() {
                     </div>
                   </div>
 
-                  {(p.startDate || p.dueDate) && (
+                  {(p.startDate || p.endDate) && (
                     <div className="flex items-center gap-1 text-xs text-muted-foreground">
                       <Calendar className="h-3 w-3" />
                       {p.startDate && <span>{format(new Date(p.startDate), "dd MMM")}</span>}
-                      {p.startDate && p.dueDate && <span>—</span>}
-                      {p.dueDate && <span>{format(new Date(p.dueDate), "dd MMM yyyy")}</span>}
+                      {p.startDate && p.endDate && <span>—</span>}
+                      {p.endDate && <span>{format(new Date(p.endDate), "dd MMM yyyy")}</span>}
                     </div>
                   )}
                 </CardContent>
@@ -289,7 +304,7 @@ export default function ProjectsPage() {
               </div>
               <div className="space-y-1.5">
                 <Label>Due Date</Label>
-                <Input {...register("dueDate")} type="date" />
+                <Input {...register("endDate")} type="date" />
               </div>
             </div>
             <div className="space-y-1.5">

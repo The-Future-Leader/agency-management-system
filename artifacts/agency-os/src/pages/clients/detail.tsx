@@ -25,8 +25,8 @@ const INV_STATUS_MAP: Record<string, { label: string; variant: "default" | "seco
 export default function ClientDetailPage({ id }: { id: string }) {
   const { data: client, isLoading } = useGetClient(id);
   const { data: contracts } = useGetClientContracts(id);
-  const { data: projects } = useListProjects({ params: { query: { clientId: id } } });
-  const { data: invoices } = useListInvoices({ params: { query: { clientId: id } } });
+  const { data: projects } = useListProjects({ clientId: id });
+  const { data: invoices } = useListInvoices({ clientId: id });
 
   if (isLoading) {
     return (
@@ -101,36 +101,36 @@ export default function ClientDetailPage({ id }: { id: string }) {
                 </a>
               </div>
             )}
-            {client.address && (
+            {client.billingAddress && (
               <div className="flex items-start gap-2 text-muted-foreground">
                 <MapPin className="h-4 w-4 shrink-0 mt-0.5" />
-                <span>{client.address}</span>
+                <span>{client.billingAddress}</span>
               </div>
             )}
 
             {/* Social handles */}
-            {(client.instagramHandle || client.youtubeHandle || client.facebookHandle || client.linkedinHandle) && (
+            {(client.instagram || client.youtube || client.facebook || client.linkedin) && (
               <div className="pt-2 border-t border-border space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Social Accounts</p>
-                {client.instagramHandle && (
-                  <div className="flex items-center gap-2"><Instagram className="h-4 w-4 text-pink-500" /><span>{client.instagramHandle}</span></div>
+                {client.instagram && (
+                  <div className="flex items-center gap-2"><Instagram className="h-4 w-4 text-pink-500" /><span>{client.instagram}</span></div>
                 )}
-                {client.youtubeHandle && (
-                  <div className="flex items-center gap-2"><Youtube className="h-4 w-4 text-red-500" /><span>{client.youtubeHandle}</span></div>
+                {client.youtube && (
+                  <div className="flex items-center gap-2"><Youtube className="h-4 w-4 text-red-500" /><span>{client.youtube}</span></div>
                 )}
-                {client.facebookHandle && (
-                  <div className="flex items-center gap-2"><Facebook className="h-4 w-4 text-blue-500" /><span>{client.facebookHandle}</span></div>
+                {client.facebook && (
+                  <div className="flex items-center gap-2"><Facebook className="h-4 w-4 text-blue-500" /><span>{client.facebook}</span></div>
                 )}
-                {client.linkedinHandle && (
-                  <div className="flex items-center gap-2"><Linkedin className="h-4 w-4 text-blue-600" /><span>{client.linkedinHandle}</span></div>
+                {client.linkedin && (
+                  <div className="flex items-center gap-2"><Linkedin className="h-4 w-4 text-blue-600" /><span>{client.linkedin}</span></div>
                 )}
               </div>
             )}
 
-            {client.notes && (
+            {client.internalNotes && (
               <div className="pt-2 border-t border-border">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Notes</p>
-                <p className="text-muted-foreground text-xs whitespace-pre-line">{client.notes}</p>
+                <p className="text-muted-foreground text-xs whitespace-pre-line">{client.internalNotes}</p>
               </div>
             )}
           </CardContent>
@@ -152,7 +152,7 @@ export default function ClientDetailPage({ id }: { id: string }) {
                           {c.postsPerMonth}P / {c.reelsPerMonth}R / {c.storiesPerMonth}S per month
                         </p>
                       </div>
-                      <p className="text-sm font-semibold">₹{c.retainerAmount?.toLocaleString("en-IN")}</p>
+                      <p className="text-sm font-semibold">₹{c.monthlyRetainer?.toLocaleString("en-IN")}</p>
                     </div>
                   ))}
                 </div>

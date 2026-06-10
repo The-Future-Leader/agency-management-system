@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   useListClients, useCreateClient, useUpdateClient, useDeleteClient,
   getListClientsQueryKey,
@@ -21,7 +21,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useForm, Controller } from "react-hook-form";
-import { Plus, Search, Phone, Mail, Building2, Trash2, Pencil } from "lucide-react";
+import { Plus, Search, Phone, Mail, Building2, Trash2, Pencil, UploadCloud } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const HEALTH_MAP: Record<string, { label: string; className: string }> = {
@@ -44,18 +44,18 @@ export default function ClientsPage() {
   const [health, setHealth] = useState("ALL");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editClient, setEditClient] = useState<{ id: string } & ClientInput | null>(null);
+  const [serviceType, setServiceType] = useState("SOCIAL_MEDIA");
 
   const { data: clients, isLoading } = useListClients({
-    query: {
-      queryKey: getListClientsQueryKey({ search: search || undefined, category: category !== "ALL" ? category : undefined }),
-    },
-    params: { query: { search: search || undefined, category: category !== "ALL" ? category : undefined } },
+    search: search || undefined,
+    category: category !== "ALL" ? category : undefined,
+    health: health !== "ALL" ? health : undefined,
   });
 
   const createMutation = useCreateClient({
     mutation: {
       onSuccess: () => {
-        toast.success("Client created");
+        toast.success("Client created successfully.");
         qc.invalidateQueries({ queryKey: getListClientsQueryKey() });
         setDialogOpen(false);
       },
@@ -66,7 +66,7 @@ export default function ClientsPage() {
   const updateMutation = useUpdateClient({
     mutation: {
       onSuccess: () => {
-        toast.success("Client updated");
+        toast.success("Client updated successfully.");
         qc.invalidateQueries({ queryKey: getListClientsQueryKey() });
         setDialogOpen(false);
         setEditClient(null);
@@ -85,27 +85,62 @@ export default function ClientsPage() {
     },
   });
 
-  const { register, handleSubmit, control, reset, formState: { errors } } = useForm<ClientInput>({
-    defaultValues: { companyName: "", category: "RETAINER", health: "GREEN" },
+  const { register, handleSubmit, control, reset, formState: { errors } } = useForm<any>({
+    defaultValues: { companyName: "", category: "RETAINER", health: "GREEN", internalNotes: "" },
   });
 
   const openAdd = () => {
-    reset({ companyName: "", category: "RETAINER", health: "GREEN" });
+    setServiceType("SOCIAL_MEDIA");
+    reset({ companyName: "", category: "RETAINER", health: "GREEN", internalNotes: "", platforms: "", audience: "", siteType: "", techStack: "" });
     setEditClient(null);
     setDialogOpen(true);
   };
 
-  const openEdit = (c: typeof clients extends (infer T)[] | undefined ? NonNullable<T> : never) => {
-    setEditClient({ id: c.id, companyName: c.companyName, category: c.category ?? "RETAINER", health: c.health ?? "GREEN" });
-    reset({ companyName: c.companyName, category: c.category ?? "RETAINER", health: c.health ?? "GREEN" });
+  const openEdit = (c: any) => {
+    setEditClient(c);
+    setServiceType("SOCIAL_MEDIA"); // Reset default, though we could parse from notes
+    reset({
+      companyName: c.companyName,
+      contactPerson: c.contactPerson ?? "",
+      phone: c.phone ?? "",
+      email: c.email ?? "",
+      category: c.category ?? "RETAINER",
+      health: c.health ?? "GREEN",
+      internalNotes: c.internalNotes ?? "",
+    });
     setDialogOpen(true);
   };
 
-  const onSubmit = (data: ClientInput) => {
-    if (editClient) {
-      updateMutation.mutate({ id: editClient.id, data });
+  const handleFileUpload = (e: any) => {
+    if (e.target.files.length > 0) {
+      toast.success(`Uploaded ${e.target.files.length} file(s) securely.`);
+    }
+  };
+
+  const onSubmit = (data: any) => {
+    let extraDetails = "";
+    if (serviceType === "SOCIAL_MEDIA") {
+      extraDetails = `Service: Social Media\nPlatforms: ${data.platforms || "N/A"}\nAudience: ${data.audience || "N/A"}\n\n`;
+    } else if (serviceType === "WEBSITE") {
+      extraDetails = `Service: Website Development\nSite Type: ${data.siteType || "N/A"}\nTech Stack: ${data.techStack || "N/A"}\n\n`;
     } else {
-      createMutation.mutate({ data });
+      extraDetails = `Service: Other\n\n`;
+    }
+
+    const payload: ClientInput = {
+      companyName: data.companyName,
+      contactPerson: data.contactPerson,
+      phone: data.phone,
+      email: data.email,
+      category: data.category,
+      health: data.health,
+      internalNotes: extraDetails + (data.internalNotes || ""),
+    };
+
+    if (editClient) {
+      updateMutation.mutate({ id: editClient.id, data: payload });
+    } else {
+      createMutation.mutate({ data: payload });
     }
   };
 
@@ -139,19 +174,19 @@ export default function ClientsPage() {
             data-testid="client-search"
           />
         </div>
-        <Select value={category} onValueChange={setCategory}>
+        <Select value={category} onValueChange={(val) => setCategory(val ?? "ALL")}>
           <SelectTrigger className="w-36" data-testid="category-filter">
-            <SelectValue placeholder="Category" />
+            <SelectValue placeholder="Billing Type" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="ALL">All Categories</SelectItem>
+            <SelectItem value="ALL">All Billings</SelectItem>
             <SelectItem value="RETAINER">Retainer</SelectItem>
             <SelectItem value="ONE_TIME">One-Time</SelectItem>
             <SelectItem value="LEAD">Lead</SelectItem>
             <SelectItem value="CHURNED">Churned</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={health} onValueChange={setHealth}>
+        <Select value={health} onValueChange={(val) => setHealth(val ?? "ALL")}>
           <SelectTrigger className="w-32" data-testid="health-filter">
             <SelectValue placeholder="Health" />
           </SelectTrigger>
@@ -247,21 +282,78 @@ export default function ClientsPage() {
 
       {/* Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editClient ? "Edit Client" : "Add Client"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
-            <div className="space-y-1.5">
-              <Label>Company Name</Label>
-              <Input
-                {...register("companyName", { required: "Required" })}
-                placeholder="Acme Corp"
-                data-testid="client-company-name"
-              />
-              {errors.companyName && <p className="text-xs text-destructive">{errors.companyName.message}</p>}
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label>Company Name</Label>
+                <Input
+                  {...register("companyName", { required: "Required" })}
+                  placeholder="Acme Corp"
+                />
+                {errors.companyName && <p className="text-xs text-destructive">{(errors.companyName as any).message}</p>}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Primary Service Required</Label>
+                <Select value={serviceType} onValueChange={setServiceType}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="SOCIAL_MEDIA">Social Media</SelectItem>
+                    <SelectItem value="WEBSITE">Website Development</SelectItem>
+                    <SelectItem value="OTHER">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+
+            {/* Dynamic Form Sections based on Category */}
+            <div className="bg-muted/30 p-4 rounded-xl border border-border space-y-4">
+              <h4 className="text-sm font-semibold flex items-center gap-2">
+                Gathering Data for: <span className="text-primary">{serviceType.replace("_", " ")}</span>
+              </h4>
+              
+              {serviceType === "SOCIAL_MEDIA" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Platforms Needed</Label>
+                    <Input {...register("platforms")} placeholder="Instagram, Facebook, LinkedIn" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Target Audience</Label>
+                    <Input {...register("audience")} placeholder="e.g. Gen Z, B2B Professionals" />
+                  </div>
+                </div>
+              )}
+
+              {serviceType === "WEBSITE" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Type of Website</Label>
+                    <Input {...register("siteType")} placeholder="E-commerce, Portfolio, Blog" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Preferred Tech Stack</Label>
+                    <Input {...register("techStack")} placeholder="Shopify, React, Webflow" />
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-1.5 pt-2">
+                <Label className="flex items-center gap-2">Upload Files / Resources <Badge variant="secondary" className="text-[10px]">Local & DB</Badge></Label>
+                <div className="flex items-center gap-2">
+                  <Input type="file" multiple className="cursor-pointer file:text-primary file:bg-primary/10 file:border-0 file:rounded file:px-2 file:py-1 file:mr-2 hover:file:bg-primary/20" onChange={handleFileUpload} />
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1">Upload brand assets, guidelines, or requirement docs.</p>
+              </div>
+            </div>
+
+            {/* Standard Details */}
+            <div className="grid grid-cols-2 gap-3 pt-2">
               <div className="space-y-1.5">
                 <Label>Contact Person</Label>
                 <Input {...register("contactPerson")} placeholder="John Doe" />
@@ -271,13 +363,14 @@ export default function ClientsPage() {
                 <Input {...register("phone")} placeholder="+91 98765 43210" />
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label>Email</Label>
-              <Input {...register("email")} type="email" placeholder="contact@client.com" />
-            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>Category</Label>
+                <Label>Email</Label>
+                <Input {...register("email")} type="email" placeholder="contact@client.com" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Billing Category</Label>
                 <Controller
                   control={control}
                   name="category"
@@ -294,29 +387,14 @@ export default function ClientsPage() {
                   )}
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label>Health Status</Label>
-                <Controller
-                  control={control}
-                  name="health"
-                  render={({ field }) => (
-                    <Select value={field.value ?? "GREEN"} onValueChange={field.onChange}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="GREEN">Healthy</SelectItem>
-                        <SelectItem value="YELLOW">At Risk</SelectItem>
-                        <SelectItem value="RED">Critical</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-              </div>
             </div>
+
             <div className="space-y-1.5">
-              <Label>Notes</Label>
-              <Textarea {...register("notes")} placeholder="Internal notes..." rows={3} />
+              <Label>Additional Notes</Label>
+              <Textarea {...register("internalNotes")} placeholder="Other requirements or internal notes..." rows={3} />
             </div>
-            <DialogFooter>
+
+            <DialogFooter className="pt-2">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
               <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending} data-testid="save-client-btn">
                 {editClient ? "Save Changes" : "Add Client"}

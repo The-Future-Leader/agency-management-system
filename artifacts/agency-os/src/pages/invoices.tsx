@@ -18,7 +18,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { TiptapEditor } from "@/components/ui/tiptap";
 import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { Plus, Trash2, IndianRupee, Receipt, Plus as PlusIcon } from "lucide-react";
 import { format } from "date-fns";
@@ -33,9 +33,16 @@ const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secon
   CANCELLED: { label: "Cancelled", variant: "secondary", className: "line-through opacity-60" },
 };
 
-interface LineItem { description: string; qty: number; unitPrice: number; taxPercent: number; }
+interface LineItem { description: string; quantity: number; unitPrice: number; taxPercent: number; }
 
-type InvoiceFormData = Omit<InvoiceInput, "lineItems"> & { lineItems: LineItem[] };
+interface InvoiceFormData {
+  clientId: string;
+  status: string;
+  invoiceDate: string;
+  dueDate?: string;
+  notes?: string;
+  lineItems: LineItem[];
+}
 
 export default function InvoicesPage() {
   const qc = useQueryClient();
@@ -83,19 +90,34 @@ export default function InvoicesPage() {
     defaultValues: {
       clientId: "",
       status: "DRAFT",
-      lineItems: [{ description: "", qty: 1, unitPrice: 0, taxPercent: 18 }],
+      invoiceDate: new Date().toISOString().split("T")[0],
+      lineItems: [{ description: "", quantity: 1, unitPrice: 0, taxPercent: 18 }],
     },
   });
 
   const { fields, append, remove } = useFieldArray({ control, name: "lineItems" });
   const lineItems = watch("lineItems");
 
-  const subtotal = lineItems.reduce((sum, item) => sum + (Number(item.qty) * Number(item.unitPrice)), 0);
-  const totalTax = lineItems.reduce((sum, item) => sum + (Number(item.qty) * Number(item.unitPrice) * Number(item.taxPercent) / 100), 0);
+  const subtotal = (lineItems ?? []).reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.unitPrice || 0)), 0);
+  const totalTax = (lineItems ?? []).reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.unitPrice || 0) * Number(item.taxPercent || 0) / 100), 0);
   const total = subtotal + totalTax;
 
   const onSubmit = (data: InvoiceFormData) => {
-    createMutation.mutate({ data: { ...data, subtotal, taxAmount: totalTax, total } as InvoiceInput });
+    const lineItems = data.lineItems.map(item => ({
+      description: item.description,
+      quantity: Number(item.quantity),
+      unitPrice: Number(item.unitPrice),
+      taxPercent: Number(item.taxPercent),
+    }));
+    createMutation.mutate({
+      data: {
+        clientId: data.clientId,
+        invoiceDate: data.invoiceDate,
+        dueDate: data.dueDate || undefined,
+        notes: data.notes,
+        lineItems,
+      }
+    });
   };
 
   const filtered = (invoices ?? []).filter((inv) => {
@@ -110,7 +132,7 @@ export default function InvoicesPage() {
           <h1 className="text-2xl font-bold font-heading">Invoices</h1>
           <p className="text-sm text-muted-foreground mt-0.5">{invoices?.length ?? 0} total invoices</p>
         </div>
-        <Button onClick={() => { reset({ clientId: "", status: "DRAFT", lineItems: [{ description: "", qty: 1, unitPrice: 0, taxPercent: 18 }] }); setDialogOpen(true); }} className="gap-2 btn-micro-anim" data-testid="add-invoice-btn">
+        <Button onClick={() => { reset({ clientId: "", status: "DRAFT", invoiceDate: new Date().toISOString().split("T")[0], lineItems: [{ description: "", quantity: 1, unitPrice: 0, taxPercent: 18 }] }); setDialogOpen(true); }} className="gap-2 btn-micro-anim" data-testid="add-invoice-btn">
           <Plus className="h-4 w-4" /> New Invoice
         </Button>
       </div>
@@ -142,7 +164,7 @@ export default function InvoicesPage() {
       </div>
 
       {/* Filter */}
-      <Select value={statusFilter} onValueChange={setStatusFilter}>
+      <Select value={statusFilter} onValueChange={(val) => setStatusFilter(val ?? "ALL")}>
         <SelectTrigger className="w-40">
           <SelectValue placeholder="Status" />
         </SelectTrigger>
@@ -194,7 +216,7 @@ export default function InvoicesPage() {
                     <td className="px-4 py-3">
                       <Select
                         value={inv.status ?? "DRAFT"}
-                        onValueChange={(v) => updateMutation.mutate({ id: inv.id, data: { status: v } })}
+                        onValueChange={(v) => { if (v) updateMutation.mutate({ id: inv.id, data: { status: v } }); }}
                       >
                         <SelectTrigger className="h-7 text-xs w-32 border-0 bg-transparent p-0 shadow-none focus:ring-0">
                           <Badge
@@ -277,7 +299,7 @@ export default function InvoicesPage() {
                 {fields.map((field, idx) => (
                   <div key={field.id} className="grid grid-cols-[1fr_60px_80px_60px_24px] gap-2 items-start">
                     <Input {...register(`lineItems.${idx}.description`)} placeholder="Description" className="text-sm" />
-                    <Input {...register(`lineItems.${idx}.qty`)} type="number" placeholder="Qty" className="text-sm" />
+                    <Input {...register(`lineItems.${idx}.quantity`)} type="number" placeholder="Qty" className="text-sm" />
                     <Input {...register(`lineItems.${idx}.unitPrice`)} type="number" placeholder="Price" className="text-sm" />
                     <Input {...register(`lineItems.${idx}.taxPercent`)} type="number" placeholder="Tax%" className="text-sm" />
                     <Button type="button" variant="ghost" size="icon" className="h-8 w-6 text-destructive hover:text-destructive" onClick={() => remove(idx)}>
@@ -291,7 +313,7 @@ export default function InvoicesPage() {
                 variant="outline"
                 size="sm"
                 className="mt-2 gap-1 text-xs"
-                onClick={() => append({ description: "", qty: 1, unitPrice: 0, taxPercent: 18 })}
+                onClick={() => append({ description: "", quantity: 1, unitPrice: 0, taxPercent: 18 })}
               >
                 <PlusIcon className="h-3 w-3" /> Add Line Item
               </Button>
@@ -305,8 +327,18 @@ export default function InvoicesPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label>Notes</Label>
-              <Textarea {...register("notes")} rows={2} placeholder="Payment instructions, notes..." />
+              <Label>Notes / Terms</Label>
+              <Controller
+                control={control}
+                name="notes"
+                render={({ field }) => (
+                  <TiptapEditor
+                    value={field.value ?? ""}
+                    onChange={field.onChange}
+                    placeholder="Payment instructions, notes, terms and conditions..."
+                  />
+                )}
+              />
             </div>
 
             <DialogFooter>

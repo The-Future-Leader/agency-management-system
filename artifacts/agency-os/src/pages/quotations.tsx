@@ -17,7 +17,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { TiptapEditor } from "@/components/ui/tiptap";
 import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { Plus, Trash2, FileText, ArrowRight } from "lucide-react";
 import { format } from "date-fns";
@@ -31,8 +31,14 @@ const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   EXPIRED: { label: "Expired", className: "bg-orange-100 text-orange-700" },
 };
 
-interface LineItem { description: string; qty: number; unitPrice: number; taxPercent: number; }
-type QuotationFormData = Omit<QuotationInput, "lineItems"> & { lineItems: LineItem[] };
+interface LineItem { description: string; quantity: number; unitPrice: number; taxPercent: number; }
+interface QuotationFormData {
+  clientId: string;
+  status: string;
+  validUntil?: string;
+  notes?: string;
+  lineItems: LineItem[];
+}
 
 export default function QuotationsPage() {
   const qc = useQueryClient();
@@ -85,19 +91,32 @@ export default function QuotationsPage() {
     defaultValues: {
       clientId: "",
       status: "DRAFT",
-      lineItems: [{ description: "", qty: 1, unitPrice: 0, taxPercent: 18 }],
+      lineItems: [{ description: "", quantity: 1, unitPrice: 0, taxPercent: 18 }],
     },
   });
 
   const { fields, append, remove } = useFieldArray({ control, name: "lineItems" });
   const lineItems = watch("lineItems");
 
-  const subtotal = lineItems.reduce((sum, item) => sum + (Number(item.qty) * Number(item.unitPrice)), 0);
-  const totalTax = lineItems.reduce((sum, item) => sum + (Number(item.qty) * Number(item.unitPrice) * Number(item.taxPercent) / 100), 0);
+  const subtotal = (lineItems ?? []).reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.unitPrice || 0)), 0);
+  const totalTax = (lineItems ?? []).reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.unitPrice || 0) * Number(item.taxPercent || 0) / 100), 0);
   const total = subtotal + totalTax;
 
   const onSubmit = (data: QuotationFormData) => {
-    createMutation.mutate({ data: { ...data, subtotal, taxAmount: totalTax, total } as QuotationInput });
+    const lineItems = data.lineItems.map(item => ({
+      description: item.description,
+      quantity: Number(item.quantity),
+      unitPrice: Number(item.unitPrice),
+      taxPercent: Number(item.taxPercent),
+    }));
+    createMutation.mutate({
+      data: {
+        clientId: data.clientId,
+        notes: data.notes,
+        validUntil: data.validUntil || undefined,
+        lineItems,
+      }
+    });
   };
 
   const filtered = (quotations ?? []).filter((q) => {
@@ -114,7 +133,7 @@ export default function QuotationsPage() {
         </div>
         <Button
           onClick={() => {
-            reset({ clientId: "", status: "DRAFT", lineItems: [{ description: "", qty: 1, unitPrice: 0, taxPercent: 18 }] });
+            reset({ clientId: "", status: "DRAFT", lineItems: [{ description: "", quantity: 1, unitPrice: 0, taxPercent: 18 }] });
             setDialogOpen(true);
           }}
           className="gap-2 btn-micro-anim" data-testid="add-quotation-btn"
@@ -123,7 +142,7 @@ export default function QuotationsPage() {
         </Button>
       </div>
 
-      <Select value={statusFilter} onValueChange={setStatusFilter}>
+      <Select value={statusFilter} onValueChange={(val) => setStatusFilter(val ?? "ALL")}>
         <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
         <SelectContent>
           <SelectItem value="ALL">All Statuses</SelectItem>
@@ -164,7 +183,7 @@ export default function QuotationsPage() {
                     <td className="px-4 py-3 font-medium font-mono text-xs">{q.number}</td>
                     <td className="px-4 py-3">{q.clientName ?? "—"}</td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      {q.quotationDate ? format(new Date(q.quotationDate), "dd MMM yy") : "—"}
+                      {q.createdAt ? format(new Date(q.createdAt), "dd MMM yy") : "—"}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {q.validUntil ? format(new Date(q.validUntil), "dd MMM yy") : "—"}
@@ -172,7 +191,7 @@ export default function QuotationsPage() {
                     <td className="px-4 py-3">
                       <Select
                         value={q.status ?? "DRAFT"}
-                        onValueChange={(v) => updateMutation.mutate({ id: q.id, data: { status: v } })}
+                        onValueChange={(v) => { if (v) updateMutation.mutate({ id: q.id, data: { status: v } }); }}
                       >
                         <SelectTrigger className="h-7 text-xs w-32 border-0 bg-transparent p-0 shadow-none focus:ring-0">
                           <Badge variant="secondary" className={cn("text-xs cursor-pointer", sc.className)}>
@@ -242,15 +261,9 @@ export default function QuotationsPage() {
                 )} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Quotation Date</Label>
-                <Input {...register("quotationDate")} type="date" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Valid Until</Label>
-                <Input {...register("validUntil")} type="date" />
-              </div>
+            <div className="space-y-1.5">
+              <Label>Valid Until</Label>
+              <Input {...register("validUntil")} type="date" />
             </div>
             <div>
               <Label className="mb-2 block">Line Items</Label>
@@ -258,7 +271,7 @@ export default function QuotationsPage() {
                 {fields.map((field, idx) => (
                   <div key={field.id} className="grid grid-cols-[1fr_60px_80px_60px_24px] gap-2 items-start">
                     <Input {...register(`lineItems.${idx}.description`)} placeholder="Description" className="text-sm" />
-                    <Input {...register(`lineItems.${idx}.qty`)} type="number" placeholder="Qty" className="text-sm" />
+                    <Input {...register(`lineItems.${idx}.quantity`)} type="number" placeholder="Qty" className="text-sm" />
                     <Input {...register(`lineItems.${idx}.unitPrice`)} type="number" placeholder="Price" className="text-sm" />
                     <Input {...register(`lineItems.${idx}.taxPercent`)} type="number" placeholder="Tax%" className="text-sm" />
                     <Button type="button" variant="ghost" size="icon" className="h-8 w-6 text-destructive" onClick={() => remove(idx)}>
@@ -267,7 +280,7 @@ export default function QuotationsPage() {
                   </div>
                 ))}
               </div>
-              <Button type="button" variant="outline" size="sm" className="mt-2 gap-1 text-xs" onClick={() => append({ description: "", qty: 1, unitPrice: 0, taxPercent: 18 })}>
+              <Button type="button" variant="outline" size="sm" className="mt-2 gap-1 text-xs" onClick={() => append({ description: "", quantity: 1, unitPrice: 0, taxPercent: 18 })}>
                 <Plus className="h-3 w-3" /> Add Line Item
               </Button>
             </div>
@@ -277,8 +290,18 @@ export default function QuotationsPage() {
               <div className="flex justify-between font-bold border-t border-border pt-1"><span>Total</span><span>₹{total.toLocaleString("en-IN")}</span></div>
             </div>
             <div className="space-y-1.5">
-              <Label>Notes</Label>
-              <Textarea {...register("notes")} rows={2} placeholder="Terms and conditions..." />
+              <Label>Notes / Terms</Label>
+              <Controller
+                control={control}
+                name="notes"
+                render={({ field }) => (
+                  <TiptapEditor
+                    value={field.value ?? ""}
+                    onChange={field.onChange}
+                    placeholder="Terms and conditions, inclusions/exclusions..."
+                  />
+                )}
+              />
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>

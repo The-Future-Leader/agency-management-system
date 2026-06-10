@@ -1,19 +1,28 @@
+import { useState } from "react";
 import {
   useGetDashboardStats,
   useGetRevenueChart,
   useGetRecentActivity,
+  useListTasks,
+  useUpdateTask,
+  getListTasksQueryKey
 } from "@workspace/api-client-react";
 import { useAuth } from "@/App";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
-  FolderKanban, Users, TrendingUp, IndianRupee, Clock, BarChart3,
+  FolderKanban, Users, TrendingUp, IndianRupee, Clock, BarChart3, CheckCircle2, UserCircle2
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, isToday, parseISO } from "date-fns";
 
 function StatCard({
   label, value, icon, trend, color = "primary",
@@ -42,15 +51,81 @@ function StatCard({
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const qc = useQueryClient();
   const { data: stats, isLoading: statsLoading } = useGetDashboardStats();
   const { data: revenueChart, isLoading: chartLoading } = useGetRevenueChart();
   const { data: activity, isLoading: activityLoading } = useGetRecentActivity();
+  const { data: allTasks, isLoading: tasksLoading } = useListTasks();
+
+  const updateTaskMutation = useUpdateTask({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getListTasksQueryKey() });
+      }
+    }
+  });
 
   const greeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return "Good morning";
     if (hour < 17) return "Good afternoon";
     return "Good evening";
+  };
+
+  const isAdmin = user?.systemRole === "SUPER_ADMIN" || user?.systemRole === "MANAGER";
+
+  // Filter My Tasks
+  const myTasks = (allTasks ?? []).filter(t => t.assigneeId === user?.id && t.status !== "DONE");
+  
+  // Filter Team Tasks (Admin only)
+  const teamTasks = (allTasks ?? []).filter(t => t.assigneeId !== user?.id && t.status !== "DONE");
+
+  const toggleTaskStatus = (taskId: string, currentStatus: string) => {
+    const newStatus = currentStatus === "DONE" ? "TODO" : "DONE";
+    updateTaskMutation.mutate({ id: taskId, data: { status: newStatus } });
+    if (newStatus === "DONE") {
+      toast.success("Task completed!");
+    }
+  };
+
+  const renderTaskList = (tasks: any[], emptyMessage: string) => {
+    if (tasksLoading) return <Skeleton className="h-32" />;
+    if (tasks.length === 0) return <p className="text-sm text-muted-foreground py-4 text-center">{emptyMessage}</p>;
+
+    return (
+      <div className="space-y-3 mt-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+        {tasks.map(task => (
+          <div key={task.id} className="flex items-start gap-3 p-3 rounded-lg border border-border bg-card/50 hover:bg-muted/30 transition-colors group">
+            <Checkbox 
+              checked={task.status === "DONE"} 
+              onCheckedChange={() => toggleTaskStatus(task.id, task.status)}
+              className="mt-1"
+            />
+            <div className="flex-1 min-w-0">
+              <p className={`text-sm font-medium ${task.status === "DONE" ? 'line-through text-muted-foreground' : ''}`}>
+                {task.title}
+              </p>
+              <div className="flex items-center gap-3 mt-1.5">
+                {task.projectName && (
+                  <Badge variant="secondary" className="text-[10px] px-1.5">{task.projectName}</Badge>
+                )}
+                {task.dueDate && isToday(parseISO(task.dueDate)) && (
+                  <span className="text-[10px] font-semibold text-rose-500">Due Today</span>
+                )}
+                <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                  <UserCircle2 className="h-3 w-3" /> Assigned by Admin
+                </span>
+                {task.assigneeName && task.assigneeId !== user?.id && (
+                  <span className="text-[10px] text-primary flex items-center gap-1">
+                    Assignee: {task.assigneeName}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
   };
 
   return (
@@ -109,9 +184,37 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        
+        {/* Daily Tasks Panel */}
+        <Card className="xl:col-span-1 border-primary/20 bg-primary/5 shadow-sm flex flex-col">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base text-primary">
+              <CheckCircle2 className="h-5 w-5" /> Daily Tasks
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex-1">
+            <Tabs defaultValue="mine" className="w-full">
+              <TabsList className="w-full grid grid-cols-2">
+                <TabsTrigger value="mine">My To-Do List</TabsTrigger>
+                {isAdmin && <TabsTrigger value="team">Team Tasks</TabsTrigger>}
+              </TabsList>
+              
+              <TabsContent value="mine" className="mt-0">
+                {renderTaskList(myTasks, "You have no pending tasks today. Great job!")}
+              </TabsContent>
+              
+              {isAdmin && (
+                <TabsContent value="team" className="mt-0">
+                  {renderTaskList(teamTasks, "No pending team tasks.")}
+                </TabsContent>
+              )}
+            </Tabs>
+          </CardContent>
+        </Card>
+
         {/* Revenue Chart */}
-        <Card className="lg:col-span-2">
+        <Card className="xl:col-span-1">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
               <BarChart3 className="h-4 w-4 text-primary" />
@@ -156,7 +259,7 @@ export default function DashboardPage() {
         </Card>
 
         {/* Recent Activity */}
-        <Card>
+        <Card className="xl:col-span-1">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Recent Activity</CardTitle>
           </CardHeader>

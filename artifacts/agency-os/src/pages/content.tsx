@@ -56,7 +56,8 @@ export default function ContentPage() {
   const month = format(currentMonth, "yyyy-MM");
   const { data: clients } = useListClients();
   const { data: posts, isLoading } = useListContentPosts({
-    params: { query: { clientId: selectedClientId || undefined, month } },
+    clientId: selectedClientId || undefined,
+    month,
   });
 
   const createMutation = useCreateContentPost({
@@ -154,7 +155,7 @@ export default function ContentPage() {
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
-        <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+        <Select value={selectedClientId} onValueChange={(val) => setSelectedClientId(val ?? "")}>
           <SelectTrigger className="w-48" data-testid="content-client-filter">
             <SelectValue placeholder="All clients" />
           </SelectTrigger>
@@ -205,7 +206,7 @@ export default function ContentPage() {
                       <div className="flex items-center gap-2 shrink-0">
                         <Select
                           value={post.status ?? "IDEA"}
-                          onValueChange={(v) => updateMutation.mutate({ id: post.id, data: { status: v } })}
+                          onValueChange={(v) => { if (v) updateMutation.mutate({ id: post.id, data: { status: v } }); }}
                         >
                           <SelectTrigger className="h-7 text-xs w-36">
                             <SelectValue />

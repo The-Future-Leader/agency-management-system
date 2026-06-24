@@ -36,13 +36,29 @@ export async function bootstrapDatabase(): Promise<void> {
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         email TEXT NOT NULL UNIQUE,
-        password TEXT,
+        password_hash TEXT,
         role TEXT NOT NULL DEFAULT 'MANAGER',
         system_role TEXT NOT NULL DEFAULT 'ACCOUNT_MANAGER',
         department TEXT,
         is_active BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT NOW()
       )
+    `);
+
+    // Migrate: rename old 'password' column to 'password_hash' if it exists
+    await db.execute(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'users' AND column_name = 'password'
+        ) AND NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'users' AND column_name = 'password_hash'
+        ) THEN
+          ALTER TABLE users RENAME COLUMN password TO password_hash;
+        END IF;
+      END $$;
     `);
 
     await db.execute(`
@@ -87,7 +103,7 @@ export async function bootstrapDatabase(): Promise<void> {
       "system_role TEXT NOT NULL DEFAULT 'ACCOUNT_MANAGER'",
       "department TEXT",
       "role TEXT NOT NULL DEFAULT 'MANAGER'",
-      "password TEXT",
+      "password_hash TEXT",
       "allowed_modules TEXT",
     ]) {
       await db.execute(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ${col}`).catch(() => {});

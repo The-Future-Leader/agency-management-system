@@ -64,12 +64,13 @@ router.delete("/:id", async (req, res) => {
 
 router.post("/ignite", async (req, res) => {
   try {
-    const { clientId, caption, platforms, scheduledAt, title } = req.body as {
+    const { clientId, caption, platforms, scheduledAt, title, assetsLink } = req.body as {
       clientId: string;
       caption: string;
       platforms: string[];
       scheduledAt?: string;
       title?: string;
+      assetsLink?: string;
     };
     if (!clientId || !caption || !platforms?.length) {
       res.status(400).json({ error: "clientId, caption and platforms required" });
@@ -84,6 +85,7 @@ router.post("/ignite", async (req, res) => {
           caption,
           title: title || undefined,
           scheduledAt: scheduledAt || undefined,
+          assetsLink: assetsLink || undefined,
           status: "SCHEDULED",
           contentType: "POST",
         })),

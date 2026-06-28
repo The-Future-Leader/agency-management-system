@@ -18,6 +18,7 @@ import proformaInvoicesRouter from "./proforma-invoices";
 import purchaseOrdersRouter from "./purchase-orders";
 import deliveryChallansRouter from "./delivery-challans";
 import socialAccountsRouter from "./social-accounts";
+import uploadsRouter from "./uploads";
 import { requireAuth } from "../middleware/auth";
 
 const router: IRouter = Router();
@@ -44,5 +45,6 @@ router.use("/proforma-invoices", proformaInvoicesRouter);
 router.use("/purchase-orders", purchaseOrdersRouter);
 router.use("/delivery-challans", deliveryChallansRouter);
 router.use("/social-accounts", socialAccountsRouter);
+router.use("/uploads", uploadsRouter);
 
 export default router;

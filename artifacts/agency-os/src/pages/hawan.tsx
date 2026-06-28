@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,7 @@ import { useListClients } from "@workspace/api-client-react";
 import {
   Instagram, Facebook, Youtube, Linkedin, Link as LinkIcon, CheckCircle2,
   BarChart3, UploadCloud, Send, FileOutput, Flame, Plus, Trash2,
-  Twitter, Globe, X as XIcon,
+  Twitter, Globe, X as XIcon, ImageIcon, VideoIcon, FileVideo,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -38,8 +38,21 @@ type SocialAccount = {
   isActive: string | null;
 };
 
+type UploadedMedia = {
+  url: string;
+  filename: string;
+  mimetype: string;
+  size: number;
+};
+
 function getPlatformMeta(id: string) {
   return PLATFORMS.find((p) => p.id === id) ?? { id, label: id, icon: <Globe className="h-4 w-4" />, color: "" };
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export default function HawanHubPage() {
@@ -61,19 +74,27 @@ export default function HawanHubPage() {
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   const [isIgniting, setIsIgniting] = useState(false);
 
+  // Media upload state
+  const [uploadedMedia, setUploadedMedia] = useState<UploadedMedia | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const { data: clients } = useListClients();
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
   function authHeaders() {
-    return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+    return { Authorization: `Bearer ${token}` };
   }
 
   async function loadAccounts(clientId: string) {
     if (!clientId) { setAccounts([]); return; }
     setLoadingAccounts(true);
     try {
-      const res = await fetch(`/api/social-accounts?clientId=${clientId}`, { headers: authHeaders() });
+      const res = await fetch(`/api/social-accounts?clientId=${clientId}`, {
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+      });
       if (!res.ok) throw new Error();
       setAccounts(await res.json());
     } catch {
@@ -99,7 +120,7 @@ export default function HawanHubPage() {
     try {
       const res = await fetch("/api/social-accounts", {
         method: "POST",
-        headers: authHeaders(),
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({
           clientId: activeClientId,
           platform: addPlatform,
@@ -122,7 +143,7 @@ export default function HawanHubPage() {
 
   async function handleDeleteAccount(id: string) {
     try {
-      await fetch(`/api/social-accounts/${id}`, { method: "DELETE", headers: authHeaders() });
+      await fetch(`/api/social-accounts/${id}`, { method: "DELETE", headers: { ...authHeaders(), "Content-Type": "application/json" } });
       setAccounts((prev) => prev.filter((a) => a.id !== id));
       toast.success("Removed");
     } catch {
@@ -136,6 +157,45 @@ export default function HawanHubPage() {
     );
   }
 
+  async function uploadFile(file: File) {
+    const MAX_SIZE = 100 * 1024 * 1024;
+    if (file.size > MAX_SIZE) { toast.error("File too large — max 100 MB"); return; }
+    const isImage = file.type.startsWith("image/");
+    const isVideo = file.type.startsWith("video/");
+    if (!isImage && !isVideo) { toast.error("Only images and videos are supported"); return; }
+
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/uploads", {
+        method: "POST",
+        headers: authHeaders(),
+        body: formData,
+      });
+      if (!res.ok) throw new Error();
+      const data: UploadedMedia = await res.json();
+      setUploadedMedia(data);
+      toast.success(`${isImage ? "Image" : "Video"} uploaded!`);
+    } catch {
+      toast.error("Upload failed — please try again");
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) uploadFile(file);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) uploadFile(file);
+  }
+
   async function handleIgnite() {
     if (!activeClientId) { toast.error("Select a client first"); return; }
     if (!postCaption.trim()) { toast.error("Write a caption first"); return; }
@@ -144,19 +204,21 @@ export default function HawanHubPage() {
     try {
       const res = await fetch("/api/social-accounts/ignite", {
         method: "POST",
-        headers: authHeaders(),
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({
           clientId: activeClientId,
           caption: postCaption,
           platforms: selectedPlatforms,
           scheduledAt: postDate || undefined,
           title: postTitle || undefined,
+          assetsLink: uploadedMedia?.url || undefined,
         }),
       });
       if (!res.ok) throw new Error();
       const data = await res.json();
       toast.success(`🔥 ${data.created} posts added to Content Calendar!`);
       setPostCaption(""); setPostTitle(""); setPostDate(""); setSelectedPlatforms([]);
+      setUploadedMedia(null);
     } catch {
       toast.error("Failed to schedule posts");
     } finally {
@@ -167,6 +229,9 @@ export default function HawanHubPage() {
   const clientAccounts = accounts.filter((a) => a.clientId === activeClientId);
   const connectedPlatformIds = new Set(clientAccounts.map((a) => a.platform));
   const activeClient = clients?.find((c) => c.id === activeClientId);
+
+  const isImage = uploadedMedia?.mimetype.startsWith("image/");
+  const isVideo = uploadedMedia?.mimetype.startsWith("video/");
 
   return (
     <div className="p-6 space-y-5 animated-fade-in">
@@ -329,9 +394,89 @@ export default function HawanHubPage() {
                   <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Caption / Content</Label>
                   <Textarea
                     placeholder="Write your post caption here… it will be added to the Content Calendar for each selected platform."
-                    className="min-h-[130px] resize-none bg-background"
+                    className="min-h-[120px] resize-none bg-background"
                     value={postCaption}
                     onChange={(e) => setPostCaption(e.target.value)}
+                  />
+                </div>
+
+                {/* ── Media Upload ── */}
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    Media — Image or Video (optional)
+                  </Label>
+
+                  {uploadedMedia ? (
+                    <div className="relative rounded-xl border border-border bg-muted/30 overflow-hidden">
+                      {isImage ? (
+                        <img
+                          src={uploadedMedia.url}
+                          alt="Uploaded media"
+                          className="w-full max-h-60 object-cover"
+                        />
+                      ) : isVideo ? (
+                        <video
+                          src={uploadedMedia.url}
+                          controls
+                          className="w-full max-h-60 bg-black"
+                        />
+                      ) : null}
+                      <div className="flex items-center justify-between px-3 py-2 bg-background/90 border-t border-border">
+                        <div className="flex items-center gap-2 text-sm">
+                          {isImage
+                            ? <ImageIcon className="h-4 w-4 text-blue-500" />
+                            : <VideoIcon className="h-4 w-4 text-purple-500" />}
+                          <span className="truncate max-w-[200px] text-muted-foreground">{uploadedMedia.filename}</span>
+                          <Badge variant="secondary" className="text-xs shrink-0">{formatBytes(uploadedMedia.size)}</Badge>
+                        </div>
+                        <button
+                          className="text-muted-foreground hover:text-destructive transition-colors p-1"
+                          onClick={() => { setUploadedMedia(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}
+                        >
+                          <XIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                      onDragLeave={() => setIsDragging(false)}
+                      onDrop={handleDrop}
+                      onClick={() => fileInputRef.current?.click()}
+                      className={cn(
+                        "flex flex-col items-center justify-center gap-3 p-8 rounded-xl border-2 border-dashed cursor-pointer transition-all",
+                        isDragging
+                          ? "border-primary bg-primary/5 scale-[1.01]"
+                          : "border-border hover:border-primary/50 hover:bg-muted/30",
+                        isUploading && "pointer-events-none opacity-60"
+                      )}
+                    >
+                      {isUploading ? (
+                        <>
+                          <UploadCloud className="h-8 w-8 text-primary animate-bounce" />
+                          <p className="text-sm font-medium text-muted-foreground">Uploading…</p>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex gap-3 text-muted-foreground">
+                            <ImageIcon className="h-7 w-7" />
+                            <FileVideo className="h-7 w-7" />
+                          </div>
+                          <div className="text-center">
+                            <p className="text-sm font-medium">Drop image or video here</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">or click to browse — JPG, PNG, GIF, MP4, MOV · max 100 MB</p>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,video/*"
+                    className="hidden"
+                    onChange={handleFileChange}
                   />
                 </div>
 
@@ -370,22 +515,23 @@ export default function HawanHubPage() {
                   {selectedPlatforms.length > 0 && (
                     <p className="text-xs text-muted-foreground">
                       {selectedPlatforms.length} platform{selectedPlatforms.length !== 1 ? "s" : ""} selected — this will create {selectedPlatforms.length} post{selectedPlatforms.length !== 1 ? "s" : ""} in Content Calendar
+                      {uploadedMedia && " with your uploaded media"}
                     </p>
                   )}
                 </div>
 
-                {/* Info banner about auto-posting */}
+                {/* Info banner */}
                 <div className="flex gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/20 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300">
                   <span className="shrink-0 mt-0.5">ℹ️</span>
                   <span>
-                    Posts are added to your <strong>Content Calendar</strong> as "Scheduled" so your team tracks them.
+                    Posts are added to your <strong>Content Calendar</strong> as "Scheduled" so your team can track them.
                     For <strong>automatic publishing</strong> to the actual platforms, connect each platform's API key in the handle settings.
                   </span>
                 </div>
 
                 <Button
                   onClick={handleIgnite}
-                  disabled={isIgniting || !postCaption.trim() || selectedPlatforms.length === 0}
+                  disabled={isIgniting || isUploading || !postCaption.trim() || selectedPlatforms.length === 0}
                   className="w-full gap-2 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white border-0"
                   size="lg"
                 >

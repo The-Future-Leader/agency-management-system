@@ -48,7 +48,7 @@ task = "shell.exec"
 args = "PORT=21486 pnpm --filter @workspace/agency-os run dev"
 
 [agent]
-stack = "PNPM_WORKSPACE"
+stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
 
 [postMerge]

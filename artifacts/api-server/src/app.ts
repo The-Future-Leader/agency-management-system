@@ -3,9 +3,11 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import path from "path";
 import fs from "fs";
+import { rateLimit } from "express-rate-limit";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import publicRouter from "./routes/publicCalendar";
+import { errorHandler } from "./middleware/errorHandler";
 
 const app: Express = express();
 
@@ -36,7 +38,16 @@ const uploadsDir = path.resolve(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 app.use("/api/uploads", express.static(uploadsDir));
 
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please try again later." },
+});
+
 app.use("/public", publicRouter);
+app.use("/api/auth", authLimiter);
 app.use("/api", router);
 
 if (process.env.SERVE_STATIC === "true") {
@@ -46,5 +57,7 @@ if (process.env.SERVE_STATIC === "true") {
     res.sendFile(path.resolve(publicDir, "index.html"));
   });
 }
+
+app.use(errorHandler);
 
 export default app;

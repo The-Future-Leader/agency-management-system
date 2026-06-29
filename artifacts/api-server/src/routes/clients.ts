@@ -1,86 +1,76 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { clientsTable, invoicesTable } from "@workspace/db/schema";
-import { eq, ilike, or } from "drizzle-orm";
+import { eq, ilike, or, and } from "drizzle-orm";
+import { asyncHandler } from "../lib/asyncHandler";
+import { createError } from "../middleware/errorHandler";
 
 const router = Router();
 
-router.get("/", async (req, res) => {
-  try {
-    const { search, category } = req.query as Record<string, string>;
-    let query = db.select().from(clientsTable);
-    const rows = await query;
-    let filtered = rows;
-    if (search) {
-      const s = search.toLowerCase();
-      filtered = filtered.filter(
-        (c) => c.companyName.toLowerCase().includes(s) || (c.contactPerson ?? "").toLowerCase().includes(s)
-      );
-    }
-    if (category) {
-      filtered = filtered.filter((c) => c.category === category);
-    }
-    return res.json(filtered);
-  } catch {
-    return res.status(500).json({ error: "Internal error" });
-  }
-});
+router.get("/", asyncHandler(async (req, res) => {
+  const { search, category } = req.query as Record<string, string>;
 
-router.post("/", async (req, res) => {
-  try {
-    const [row] = await db.insert(clientsTable).values(req.body).returning();
-    return res.status(201).json(row);
-  } catch {
-    return res.status(500).json({ error: "Internal error" });
+  const conditions = [];
+  if (search) {
+    conditions.push(
+      or(
+        ilike(clientsTable.companyName, `%${search}%`),
+        ilike(clientsTable.contactPerson, `%${search}%`),
+      ),
+    );
   }
-});
+  if (category) conditions.push(eq(clientsTable.category, category));
 
-router.get("/:id", async (req, res) => {
-  try {
-    const [row] = await db.select().from(clientsTable).where(eq(clientsTable.id, req.params.id));
-    if (!row) return res.status(404).json({ error: "Not found" });
-    return res.json(row);
-  } catch {
-    return res.status(500).json({ error: "Internal error" });
-  }
-});
+  const rows = await db
+    .select()
+    .from(clientsTable)
+    .where(conditions.length ? and(...conditions) : undefined);
 
-router.patch("/:id", async (req, res) => {
-  try {
-    const [row] = await db.update(clientsTable).set(req.body).where(eq(clientsTable.id, req.params.id)).returning();
-    return res.json(row);
-  } catch {
-    return res.status(500).json({ error: "Internal error" });
-  }
-});
+  return res.json(rows);
+}));
 
-router.delete("/:id", async (req, res) => {
-  try {
-    await db.delete(clientsTable).where(eq(clientsTable.id, req.params.id));
-    return res.status(204).send();
-  } catch {
-    return res.status(500).json({ error: "Internal error" });
-  }
-});
+router.post("/", asyncHandler(async (req, res) => {
+  const { id: _id, createdAt: _ts, ...body } = req.body;
+  const [row] = await db.insert(clientsTable).values(body).returning();
+  return res.status(201).json(row);
+}));
 
-router.get("/:id/contracts", async (req, res) => {
-  try {
-    const invoices = await db
-      .select()
-      .from(invoicesTable)
-      .where(eq(invoicesTable.clientId, req.params.id));
-    const contracts = invoices.map((inv) => ({
-      id: inv.id,
-      title: `Invoice ${inv.number ?? inv.id.slice(0, 6)}`,
-      status: inv.status,
-      value: inv.total,
-      startDate: inv.invoiceDate,
-      endDate: inv.dueDate,
-    }));
-    return res.json(contracts);
-  } catch {
-    return res.status(500).json({ error: "Internal error" });
-  }
-});
+router.get("/:id", asyncHandler(async (req, res) => {
+  const [row] = await db.select().from(clientsTable).where(eq(clientsTable.id, req.params.id));
+  if (!row) throw createError("Not found", 404);
+  return res.json(row);
+}));
+
+router.patch("/:id", asyncHandler(async (req, res) => {
+  const { id: _id, createdAt: _ts, ...body } = req.body;
+  const [row] = await db
+    .update(clientsTable)
+    .set(body)
+    .where(eq(clientsTable.id, req.params.id))
+    .returning();
+  if (!row) throw createError("Not found", 404);
+  return res.json(row);
+}));
+
+router.delete("/:id", asyncHandler(async (req, res) => {
+  await db.delete(clientsTable).where(eq(clientsTable.id, req.params.id));
+  return res.status(204).send();
+}));
+
+router.get("/:id/contracts", asyncHandler(async (req, res) => {
+  const invoices = await db
+    .select()
+    .from(invoicesTable)
+    .where(eq(invoicesTable.clientId, req.params.id));
+  const contracts = invoices.map((inv) => ({
+    id: inv.id,
+    title: `Invoice ${inv.number ?? inv.id.slice(0, 6)}`,
+    status: inv.status,
+    value: inv.total,
+    startDate: inv.invoiceDate,
+    endDate: inv.dueDate,
+  }));
+  return res.json(contracts);
+}));
 
 export default router;

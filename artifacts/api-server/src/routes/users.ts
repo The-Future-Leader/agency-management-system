@@ -3,74 +3,59 @@ import { db } from "@workspace/db";
 import { usersTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { hash } from "bcryptjs";
+import { asyncHandler } from "../lib/asyncHandler";
+import { createError } from "../middleware/errorHandler";
 
 const router = Router();
 
-// Middleware to check if the current user is a SUPER_ADMIN
-async function requireAdmin(req: any, res: any, next: any) {
-  try {
-    const userId = req.userId;
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    const [user] = await db
-      .select({ systemRole: usersTable.systemRole })
-      .from(usersTable)
-      .where(eq(usersTable.id, userId));
-    
-    if (!user || user.systemRole !== "SUPER_ADMIN") {
-      return res.status(403).json({ error: "Forbidden: Admin access required" });
-    }
-    next();
-  } catch (err) {
-    console.error("requireAdmin middleware error:", err);
-    return res.status(500).json({ error: "Internal error" });
-  }
+const USER_SAFE_COLS = {
+  id: usersTable.id,
+  name: usersTable.name,
+  email: usersTable.email,
+  role: usersTable.role,
+  systemRole: usersTable.systemRole,
+  department: usersTable.department,
+  isActive: usersTable.isActive,
+  allowedModules: usersTable.allowedModules,
+};
+
+function parseModules(row: { allowedModules: string | null }) {
+  return { ...row, allowedModules: row.allowedModules ? JSON.parse(row.allowedModules) : [] };
 }
 
-router.get("/", async (req, res) => {
-  try {
-    const rows = await db
-      .select({
-        id: usersTable.id,
-        name: usersTable.name,
-        email: usersTable.email,
-        role: usersTable.role,
-        systemRole: usersTable.systemRole,
-        department: usersTable.department,
-        isActive: usersTable.isActive,
-        allowedModules: usersTable.allowedModules,
-      })
-      .from(usersTable);
-    
-    const parsedRows = rows.map(u => ({
-      ...u,
-      allowedModules: u.allowedModules ? JSON.parse(u.allowedModules) : [],
-    }));
-    return res.json(parsedRows);
-  } catch {
-    return res.status(500).json({ error: "Internal error" });
+const requireAdmin = asyncHandler(async (req: any, res: any, next: any) => {
+  const userId = req.userId;
+  if (!userId) throw createError("Unauthorized", 401);
+  const [user] = await db
+    .select({ systemRole: usersTable.systemRole })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId));
+  if (!user || user.systemRole !== "SUPER_ADMIN") {
+    throw createError("Forbidden: Admin access required", 403);
   }
+  next();
 });
 
-router.post("/", requireAdmin, async (req, res) => {
-  try {
-    const { name, email, password, systemRole, department, isActive, allowedModules } = req.body;
-    if (!name || !email) {
-      return res.status(400).json({ error: "Name and email are required" });
-    }
+router.get("/", asyncHandler(async (req, res) => {
+  const rows = await db.select(USER_SAFE_COLS).from(usersTable);
+  return res.json(rows.map(parseModules));
+}));
 
-    const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, email));
-    if (existing) {
-      return res.status(409).json({ error: "User with this email already exists" });
-    }
+router.post("/", requireAdmin, asyncHandler(async (req, res) => {
+  const { name, email, password, systemRole, department, isActive, allowedModules } = req.body;
+  if (!name || !email) throw createError("Name and email are required", 400);
 
-    let passwordHash = null;
-    if (password) {
-      passwordHash = await hash(password, 12);
-    }
+  const [existing] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.email, email));
+  if (existing) throw createError("User with this email already exists", 409);
 
-    const insertData = {
+  const passwordHash = password ? await hash(password, 12) : null;
+
+  const [row] = await db
+    .insert(usersTable)
+    .values({
       name,
       email,
       password: passwordHash,
@@ -79,65 +64,42 @@ router.post("/", requireAdmin, async (req, res) => {
       department: department || null,
       isActive: isActive !== undefined ? isActive : true,
       allowedModules: allowedModules ? JSON.stringify(allowedModules) : JSON.stringify([]),
-    };
+    })
+    .returning(USER_SAFE_COLS);
 
-    const [row] = await db.insert(usersTable).values(insertData).returning({
-      id: usersTable.id,
-      name: usersTable.name,
-      email: usersTable.email,
-      role: usersTable.role,
-      systemRole: usersTable.systemRole,
-      department: usersTable.department,
-      isActive: usersTable.isActive,
-      allowedModules: usersTable.allowedModules,
-    });
-    return res.status(201).json({
-      ...row,
-      allowedModules: row.allowedModules ? JSON.parse(row.allowedModules) : [],
-    });
-  } catch (err) {
-    console.error("Create user error:", err);
-    return res.status(500).json({ error: "Internal error" });
-  }
-});
+  return res.status(201).json(parseModules(row));
+}));
 
-router.patch("/:id", requireAdmin, async (req, res) => {
-  try {
-    const updateData = {
-      ...req.body,
-    };
-    if (req.body.systemRole) {
-      updateData.role = req.body.systemRole;
+router.patch("/:id", requireAdmin, asyncHandler(async (req, res) => {
+  const { id: _id, createdAt: _ts, password: _pw, ...body } = req.body;
+
+  if (body.email) {
+    const [conflict] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.email, body.email));
+    if (conflict && conflict.id !== req.params.id) {
+      throw createError("Email is already in use by another account", 409);
     }
-    if (req.body.allowedModules) {
-      updateData.allowedModules = JSON.stringify(req.body.allowedModules);
-    }
-    const [row] = await db.update(usersTable).set(updateData).where(eq(usersTable.id, req.params.id)).returning({
-      id: usersTable.id,
-      name: usersTable.name,
-      email: usersTable.email,
-      role: usersTable.role,
-      systemRole: usersTable.systemRole,
-      department: usersTable.department,
-      isActive: usersTable.isActive,
-      allowedModules: usersTable.allowedModules,
-    });
-    return res.json({
-      ...row,
-      allowedModules: row.allowedModules ? JSON.parse(row.allowedModules) : [],
-    });
-  } catch {
-    return res.status(500).json({ error: "Internal error" });
   }
-});
 
-router.delete("/:id", requireAdmin, async (req, res) => {
-  try {
-    await db.delete(usersTable).where(eq(usersTable.id, req.params.id));
-    return res.status(204).send();
-  } catch {
-    return res.status(500).json({ error: "Internal error" });
-  }
-});
+  const updateData: Record<string, unknown> = { ...body };
+  if (body.systemRole) updateData.role = body.systemRole;
+  if (body.allowedModules) updateData.allowedModules = JSON.stringify(body.allowedModules);
+
+  const [row] = await db
+    .update(usersTable)
+    .set(updateData)
+    .where(eq(usersTable.id, req.params.id))
+    .returning(USER_SAFE_COLS);
+
+  if (!row) throw createError("User not found", 404);
+  return res.json(parseModules(row));
+}));
+
+router.delete("/:id", requireAdmin, asyncHandler(async (req, res) => {
+  await db.delete(usersTable).where(eq(usersTable.id, req.params.id));
+  return res.status(204).send();
+}));
 
 export default router;

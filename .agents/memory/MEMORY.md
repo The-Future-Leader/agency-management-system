@@ -1,1 +1,2 @@
 - [AgencyOS stack](agencyos-stack.md) — pnpm workspace migration; @base-ui/react needed; wouter Link must not wrap <a>
+- [Git commit restriction](git-commit-restriction.md) — git commit is blocked in main agent; Replit auto-commits at session end; push via `bash push-to-github.sh` after checkpoint

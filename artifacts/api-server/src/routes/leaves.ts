@@ -3,89 +3,72 @@ import { db } from "@workspace/db";
 import { leaveRequests, users } from "@workspace/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
+import { asyncHandler } from "../lib/asyncHandler";
+import { createError } from "../middleware/errorHandler";
 
 const router = Router();
 
-router.get("/leaves", requireAuth, async (req, res) => {
-  try {
-    const { userId, status } = req.query as Record<string, string>;
-    let conditions = [];
-    if (userId) conditions.push(eq(leaveRequests.userId, userId));
-    if (status) conditions.push(eq(leaveRequests.status, status as any));
+router.get("/leaves", requireAuth, asyncHandler(async (req, res) => {
+  const { userId, status } = req.query as Record<string, string>;
+  const conditions = [];
+  if (userId) conditions.push(eq(leaveRequests.userId, userId));
+  if (status) conditions.push(eq(leaveRequests.status, status as any));
 
-    const allLeaves = await db.select().from(leaveRequests)
+  const [allLeaves, allUsers] = await Promise.all([
+    db.select().from(leaveRequests)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(sql`created_at desc`);
+      .orderBy(sql`created_at desc`),
+    db.select({ id: users.id, name: users.name }).from(users),
+  ]);
 
-    const allUsers = await db.select({ id: users.id, name: users.name }).from(users);
-    const userMap: Record<string, string> = {};
-    for (const u of allUsers) userMap[u.id] = u.name;
+  const userMap: Record<string, string> = Object.fromEntries(allUsers.map((u) => [u.id, u.name]));
 
-    res.json(allLeaves.map((l) => ({
-      ...l,
-      userName: userMap[l.userId] ?? null,
-      createdAt: l.createdAt?.toISOString() ?? null,
-    })));
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
+  return res.json(allLeaves.map((l) => ({
+    ...l,
+    userName: userMap[l.userId] ?? null,
+    createdAt: l.createdAt?.toISOString() ?? null,
+  })));
+}));
 
-router.post("/leaves", requireAuth, async (req, res) => {
-  try {
-    const userId = (req as any).userId;
-    const [user] = await db.select().from(users).where(eq(users.id, userId));
-    if (!user) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
+router.post("/leaves", requireAuth, asyncHandler(async (req, res) => {
+  const userId = (req as any).userId;
+  const [user] = await db.select({ id: users.id, name: users.name }).from(users).where(eq(users.id, userId));
+  if (!user) throw createError("Unauthorized", 401);
 
-    const data = req.body;
-    const [leave] = await db.insert(leaveRequests).values({
-      id: crypto.randomUUID(),
-      userId,
-      type: data.type,
-      startDate: data.startDate,
-      endDate: data.endDate,
-      reason: data.reason ?? null,
-      status: "PENDING",
-    }).returning();
-    res.status(201).json({ ...leave, userName: user.name, createdAt: leave.createdAt?.toISOString() ?? null });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
+  const { type, startDate, endDate, reason } = req.body;
+  if (!type || !startDate || !endDate) throw createError("type, startDate, and endDate are required", 400);
 
-router.post("/leaves/:id/approve", requireAuth, async (req, res) => {
-  try {
-    const userId = (req as any).userId;
-    const [updated] = await db.update(leaveRequests)
-      .set({ status: "APPROVED", reviewedBy: userId })
-      .where(eq(leaveRequests.id, (req.params.id as string)))
-      .returning();
-    if (!updated) { res.status(404).json({ error: "Not found" }); return; }
-    res.json({ ...updated, userName: null, createdAt: updated.createdAt?.toISOString() ?? null });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
+  const [leave] = await db.insert(leaveRequests).values({
+    id: crypto.randomUUID(),
+    userId,
+    type,
+    startDate,
+    endDate,
+    reason: reason ?? null,
+    status: "PENDING",
+  }).returning();
 
-router.post("/leaves/:id/reject", requireAuth, async (req, res) => {
-  try {
-    const userId = (req as any).userId;
-    const [updated] = await db.update(leaveRequests)
-      .set({ status: "REJECTED", reviewedBy: userId })
-      .where(eq(leaveRequests.id, (req.params.id as string)))
-      .returning();
-    if (!updated) { res.status(404).json({ error: "Not found" }); return; }
-    res.json({ ...updated, userName: null, createdAt: updated.createdAt?.toISOString() ?? null });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
+  return res.status(201).json({ ...leave, userName: user.name, createdAt: leave.createdAt?.toISOString() ?? null });
+}));
+
+router.post("/leaves/:id/approve", requireAuth, asyncHandler(async (req, res) => {
+  const userId = (req as any).userId;
+  const [updated] = await db.update(leaveRequests)
+    .set({ status: "APPROVED", reviewedBy: userId })
+    .where(eq(leaveRequests.id, req.params.id))
+    .returning();
+  if (!updated) throw createError("Not found", 404);
+  return res.json({ ...updated, createdAt: updated.createdAt?.toISOString() ?? null });
+}));
+
+router.post("/leaves/:id/reject", requireAuth, asyncHandler(async (req, res) => {
+  const userId = (req as any).userId;
+  const [updated] = await db.update(leaveRequests)
+    .set({ status: "REJECTED", reviewedBy: userId })
+    .where(eq(leaveRequests.id, req.params.id))
+    .returning();
+  if (!updated) throw createError("Not found", 404);
+  return res.json({ ...updated, createdAt: updated.createdAt?.toISOString() ?? null });
+}));
 
 export default router;

@@ -3,66 +3,43 @@ import { db } from "@workspace/db";
 import { agencySettings } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
+import { asyncHandler } from "../lib/asyncHandler";
 
 const router = Router();
 
-router.get("/settings", requireAuth, async (_req, res) => {
-  try {
-    let settings = await db.query.agencySettings.findFirst({
-      where: eq(agencySettings.id, "default"),
-    });
+const DEFAULT_SETTINGS = {
+  id: "default",
+  agencyName: "Blink Beyond",
+  primaryColor: "#6366f1",
+  currency: "INR",
+  taxLabel: "GST",
+  taxPercent: 18,
+  workDayStart: "09:00",
+  workDayEnd: "18:00",
+};
 
-    if (!settings) {
-      const [created] = await db.insert(agencySettings).values({
-        id: "default",
-        agencyName: "Blink Beyond",
-        primaryColor: "#6366f1",
-        currency: "INR",
-        taxLabel: "GST",
-        taxPercent: 18,
-        workDayStart: "09:00",
-        workDayEnd: "18:00",
-      }).returning();
-      settings = created;
-    }
-
-    res.json({ ...settings, updatedAt: settings.updatedAt?.toISOString() ?? null });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
+async function ensureSettings() {
+  let settings = await db.query.agencySettings.findFirst({ where: eq(agencySettings.id, "default") });
+  if (!settings) {
+    const [created] = await db.insert(agencySettings).values(DEFAULT_SETTINGS).returning();
+    settings = created;
   }
-});
+  return settings;
+}
 
-router.patch("/settings", requireAuth, async (req, res) => {
-  try {
-    let settings = await db.query.agencySettings.findFirst({
-      where: eq(agencySettings.id, "default"),
-    });
+router.get("/settings", requireAuth, asyncHandler(async (_req, res) => {
+  const settings = await ensureSettings();
+  return res.json({ ...settings, updatedAt: settings.updatedAt?.toISOString() ?? null });
+}));
 
-    if (!settings) {
-      const [created] = await db.insert(agencySettings).values({
-        id: "default",
-        agencyName: "Blink Beyond",
-        primaryColor: "#6366f1",
-        currency: "INR",
-        taxLabel: "GST",
-        taxPercent: 18,
-        workDayStart: "09:00",
-        workDayEnd: "18:00",
-      }).returning();
-      settings = created;
-    }
-
-    const [updated] = await db.update(agencySettings)
-      .set({ ...req.body, updatedAt: new Date() })
-      .where(eq(agencySettings.id, "default"))
-      .returning();
-
-    res.json({ ...updated, updatedAt: updated.updatedAt?.toISOString() ?? null });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
+router.patch("/settings", requireAuth, asyncHandler(async (req, res) => {
+  await ensureSettings();
+  const { id: _id, ...body } = req.body;
+  const [updated] = await db.update(agencySettings)
+    .set({ ...body, updatedAt: new Date() })
+    .where(eq(agencySettings.id, "default"))
+    .returning();
+  return res.json({ ...updated, updatedAt: updated.updatedAt?.toISOString() ?? null });
+}));
 
 export default router;

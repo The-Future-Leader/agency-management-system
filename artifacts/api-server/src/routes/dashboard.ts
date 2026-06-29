@@ -3,104 +3,73 @@ import { db } from "@workspace/db";
 import {
   clientsTable, projectsTable, leadsTable, tasksTable, invoicesTable,
 } from "@workspace/db/schema";
-import { eq, gte } from "drizzle-orm";
+import { eq, gte, sql, and, lte } from "drizzle-orm";
+import { asyncHandler } from "../lib/asyncHandler";
 
 const router = Router();
 
-router.get("/stats", async (req, res) => {
-  try {
-    const [clients, projects, leads, tasks, invoices] = await Promise.all([
-      db.select().from(clientsTable),
-      db.select().from(projectsTable),
-      db.select().from(leadsTable),
-      db.select().from(tasksTable),
-      db.select().from(invoicesTable),
-    ]);
+router.get("/stats", asyncHandler(async (req, res) => {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const today = now.toISOString().slice(0, 10);
 
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const monthlyRevenue = invoices
-      .filter((i) => i.status === "PAID" && i.invoiceDate && i.invoiceDate >= monthStart.slice(0, 10))
-      .reduce((sum, i) => sum + (i.total ?? 0), 0);
+  const [
+    [{ totalClients }],
+    [{ activeProjects }],
+    [{ openLeads }],
+    [{ revenuePaid }],
+    [{ outstanding }],
+    [{ monthlyRevenue }],
+    [{ tasksDue }],
+  ] = await Promise.all([
+    db.select({ totalClients: sql<number>`count(*)::int` }).from(clientsTable),
+    db.select({ activeProjects: sql<number>`count(*)::int` }).from(projectsTable).where(eq(projectsTable.status, "IN_PROGRESS")),
+    db.select({ openLeads: sql<number>`count(*)::int` }).from(leadsTable).where(sql`${leadsTable.stage} not in ('CLOSED_WON','CLOSED_LOST')`),
+    db.select({ revenuePaid: sql<number>`coalesce(sum(total),0)::float` }).from(invoicesTable).where(eq(invoicesTable.status, "PAID")),
+    db.select({ outstanding: sql<number>`coalesce(sum(total),0)::float` }).from(invoicesTable).where(sql`${invoicesTable.status} in ('SENT','DRAFT','OVERDUE')`),
+    db.select({ monthlyRevenue: sql<number>`coalesce(sum(total),0)::float` }).from(invoicesTable).where(and(eq(invoicesTable.status, "PAID"), gte(invoicesTable.invoiceDate, monthStart))),
+    db.select({ tasksDue: sql<number>`count(*)::int` }).from(tasksTable).where(and(sql`${tasksTable.status} != 'DONE'`, lte(tasksTable.dueDate, today))),
+  ]);
 
-    const revenuePaid = invoices
-      .filter((i) => i.status === "PAID")
-      .reduce((sum, i) => sum + (i.total ?? 0), 0);
-    const outstanding = invoices
-      .filter((i) => ["SENT", "DRAFT", "OVERDUE"].includes(i.status ?? ""))
-      .reduce((sum, i) => sum + (i.total ?? 0), 0);
+  return res.json({ totalClients, activeProjects, openLeads, revenuePaid, outstanding, monthlyRevenue, tasksDue });
+}));
 
-    return res.json({
-      totalClients: clients.length,
-      activeProjects: projects.filter((p) => p.status === "IN_PROGRESS").length,
-      openLeads: leads.filter((l) => !["WON", "LOST", "CLOSED_WON", "CLOSED_LOST"].includes(l.stage)).length,
-      revenuePaid,
-      outstanding,
-      monthlyRevenue,
-      tasksDue: tasks.filter((t) => t.status !== "DONE" && t.dueDate && t.dueDate <= new Date().toISOString().slice(0, 10)).length,
-    });
-  } catch {
-    return res.status(500).json({ error: "Internal error" });
+router.get("/revenue-chart", asyncHandler(async (req, res) => {
+  const now = new Date();
+  const months: Record<string, number> = {};
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months[d.toLocaleString("default", { month: "short", year: "2-digit" })] = 0;
   }
-});
 
-router.get("/revenue-chart", async (req, res) => {
-  try {
-    const invoices = await db.select().from(invoicesTable);
-    const months: Record<string, number> = {};
-    const now = new Date();
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = d.toLocaleString("default", { month: "short", year: "2-digit" });
-      months[key] = 0;
+  const invoices = await db
+    .select({ invoiceDate: invoicesTable.invoiceDate, total: invoicesTable.total })
+    .from(invoicesTable)
+    .where(eq(invoicesTable.status, "PAID"));
+
+  for (const inv of invoices) {
+    if (inv.invoiceDate) {
+      const key = new Date(inv.invoiceDate).toLocaleString("default", { month: "short", year: "2-digit" });
+      if (key in months) months[key] += inv.total ?? 0;
     }
-    for (const inv of invoices) {
-      if (inv.status === "PAID" && inv.invoiceDate) {
-        const d = new Date(inv.invoiceDate);
-        const key = d.toLocaleString("default", { month: "short", year: "2-digit" });
-        if (key in months) {
-          months[key] += inv.total ?? 0;
-        }
-      }
-    }
-    return res.json(Object.entries(months).map(([month, amount]) => ({ month, amount })));
-  } catch {
-    return res.status(500).json({ error: "Internal error" });
   }
-});
+  return res.json(Object.entries(months).map(([month, amount]) => ({ month, amount })));
+}));
 
-router.get("/recent-activity", async (req, res) => {
-  try {
-    const [clients, projects, invoices] = await Promise.all([
-      db.select().from(clientsTable),
-      db.select().from(projectsTable),
-      db.select().from(invoicesTable),
-    ]);
-    const activity = [
-      ...clients.slice(-3).map((c) => ({
-        id: `client-${c.id}`,
-        type: "client",
-        message: `Client ${c.companyName} added`,
-        createdAt: c.createdAt?.toISOString() ?? new Date().toISOString(),
-      })),
-      ...projects.slice(-3).map((p) => ({
-        id: `project-${p.id}`,
-        type: "project",
-        message: `Project "${p.name}" created`,
-        createdAt: p.createdAt?.toISOString() ?? new Date().toISOString(),
-      })),
-      ...invoices.slice(-3).map((i) => ({
-        id: `invoice-${i.id}`,
-        type: "invoice",
-        message: `Invoice ${i.number ?? ""} ${i.status?.toLowerCase()}`,
-        createdAt: i.createdAt?.toISOString() ?? new Date().toISOString(),
-      })),
-    ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10);
+router.get("/recent-activity", asyncHandler(async (req, res) => {
+  const [clients, projects, invoices] = await Promise.all([
+    db.select({ id: clientsTable.id, companyName: clientsTable.companyName, createdAt: clientsTable.createdAt }).from(clientsTable).orderBy(sql`created_at desc`).limit(3),
+    db.select({ id: projectsTable.id, name: projectsTable.name, createdAt: projectsTable.createdAt }).from(projectsTable).orderBy(sql`created_at desc`).limit(3),
+    db.select({ id: invoicesTable.id, number: invoicesTable.number, status: invoicesTable.status, createdAt: invoicesTable.createdAt }).from(invoicesTable).orderBy(sql`created_at desc`).limit(3),
+  ]);
 
-    return res.json(activity);
-  } catch {
-    return res.status(500).json({ error: "Internal error" });
-  }
-});
+  const activity = [
+    ...clients.map((c) => ({ id: `client-${c.id}`, type: "client", message: `Client ${c.companyName} added`, createdAt: c.createdAt?.toISOString() ?? new Date().toISOString() })),
+    ...projects.map((p) => ({ id: `project-${p.id}`, type: "project", message: `Project "${p.name}" created`, createdAt: p.createdAt?.toISOString() ?? new Date().toISOString() })),
+    ...invoices.map((i) => ({ id: `invoice-${i.id}`, type: "invoice", message: `Invoice ${i.number ?? ""} ${i.status?.toLowerCase()}`, createdAt: i.createdAt?.toISOString() ?? new Date().toISOString() })),
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10);
+
+  return res.json(activity);
+}));
 
 export default router;

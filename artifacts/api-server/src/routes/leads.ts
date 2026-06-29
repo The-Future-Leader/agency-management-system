@@ -1,74 +1,70 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { leadsTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import { asyncHandler } from "../lib/asyncHandler";
+import { createError } from "../middleware/errorHandler";
 
 const router = Router();
 
 const STAGES = ["LEAD", "QUALIFIED", "PROPOSAL", "NEGOTIATION", "CLOSED_WON", "CLOSED_LOST"];
 
-router.get("/", async (req, res) => {
-  try {
-    const rows = await db.select().from(leadsTable);
-    const now = Date.now();
-    const result = rows.map((lead) => ({
-      ...lead,
-      daysInStage: lead.stageChangedAt
-        ? Math.floor((now - new Date(lead.stageChangedAt).getTime()) / 86400000)
-        : 0,
-    }));
-    return res.json(result);
-  } catch {
-    return res.status(500).json({ error: "Internal error" });
-  }
-});
+router.get("/", asyncHandler(async (req, res) => {
+  const rows = await db.select().from(leadsTable);
+  const now = Date.now();
+  const result = rows.map((lead) => ({
+    ...lead,
+    daysInStage: lead.stageChangedAt
+      ? Math.floor((now - new Date(lead.stageChangedAt).getTime()) / 86400000)
+      : 0,
+  }));
+  return res.json(result);
+}));
 
-router.get("/pipeline-summary", async (req, res) => {
-  try {
-    const rows = await db.select().from(leadsTable);
-    const summary = STAGES.map((stage) => {
-      const leads = rows.filter((l) => l.stage === stage);
-      return {
-        stage,
-        count: leads.length,
-        totalValue: leads.reduce((sum, l) => sum + (l.value ?? 0), 0),
-      };
-    });
-    return res.json(summary);
-  } catch {
-    return res.status(500).json({ error: "Internal error" });
-  }
-});
+router.get("/pipeline-summary", asyncHandler(async (req, res) => {
+  const rows = await db
+    .select({
+      stage: leadsTable.stage,
+      count: sql<number>`count(*)::int`,
+      totalValue: sql<number>`coalesce(sum(${leadsTable.value}), 0)::float`,
+    })
+    .from(leadsTable)
+    .groupBy(leadsTable.stage);
 
-router.post("/", async (req, res) => {
-  try {
-    const [row] = await db.insert(leadsTable).values({ ...req.body, stageChangedAt: new Date() }).returning();
-    return res.status(201).json(row);
-  } catch {
-    return res.status(500).json({ error: "Internal error" });
-  }
-});
+  const map = Object.fromEntries(rows.map((r) => [r.stage, r]));
+  const summary = STAGES.map((stage) => ({
+    stage,
+    count: map[stage]?.count ?? 0,
+    totalValue: map[stage]?.totalValue ?? 0,
+  }));
+  return res.json(summary);
+}));
 
-router.patch("/:id", async (req, res) => {
-  try {
-    const updates: Record<string, unknown> = { ...req.body };
-    if (req.body.stage) {
-      updates.stageChangedAt = new Date();
-    }
-    const [row] = await db.update(leadsTable).set(updates).where(eq(leadsTable.id, req.params.id)).returning();
-    return res.json(row);
-  } catch {
-    return res.status(500).json({ error: "Internal error" });
-  }
-});
+router.post("/", asyncHandler(async (req, res) => {
+  const { id: _id, createdAt: _ts, ...body } = req.body;
+  const [row] = await db
+    .insert(leadsTable)
+    .values({ ...body, stageChangedAt: new Date() })
+    .returning();
+  return res.status(201).json(row);
+}));
 
-router.delete("/:id", async (req, res) => {
-  try {
-    await db.delete(leadsTable).where(eq(leadsTable.id, req.params.id));
-    return res.status(204).send();
-  } catch {
-    return res.status(500).json({ error: "Internal error" });
-  }
-});
+router.patch("/:id", asyncHandler(async (req, res) => {
+  const { id: _id, createdAt: _ts, ...body } = req.body;
+  const updates: Record<string, unknown> = { ...body };
+  if (body.stage) updates.stageChangedAt = new Date();
+  const [row] = await db
+    .update(leadsTable)
+    .set(updates)
+    .where(eq(leadsTable.id, req.params.id))
+    .returning();
+  if (!row) throw createError("Not found", 404);
+  return res.json(row);
+}));
+
+router.delete("/:id", asyncHandler(async (req, res) => {
+  await db.delete(leadsTable).where(eq(leadsTable.id, req.params.id));
+  return res.status(204).send();
+}));
 
 export default router;

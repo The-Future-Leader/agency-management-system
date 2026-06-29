@@ -55,7 +55,7 @@ router.get("/:id", asyncHandler(async (req, res) => {
     .select(PINV_COLS)
     .from(proformaInvoicesTable)
     .leftJoin(clientsTable, eq(proformaInvoicesTable.clientId, clientsTable.id))
-    .where(eq(proformaInvoicesTable.id, req.params.id));
+    .where(eq(proformaInvoicesTable.id, (req.params.id as string)));
   if (!row) throw createError("Not found", 404);
   return res.json(row);
 }));
@@ -66,14 +66,14 @@ router.patch("/:id", asyncHandler(async (req, res) => {
   const [row] = await db
     .update(proformaInvoicesTable)
     .set(body)
-    .where(eq(proformaInvoicesTable.id, req.params.id))
+    .where(eq(proformaInvoicesTable.id, (req.params.id as string)))
     .returning();
   if (!row) throw createError("Not found", 404);
   return res.json(row);
 }));
 
 router.delete("/:id", asyncHandler(async (req, res) => {
-  await db.delete(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, req.params.id));
+  await db.delete(proformaInvoicesTable).where(eq(proformaInvoicesTable.id, (req.params.id as string)));
   return res.status(204).send();
 }));
 

@@ -54,7 +54,7 @@ router.get("/:id", asyncHandler(async (req, res) => {
     .select(PO_COLS)
     .from(purchaseOrdersTable)
     .leftJoin(clientsTable, eq(purchaseOrdersTable.clientId, clientsTable.id))
-    .where(eq(purchaseOrdersTable.id, req.params.id));
+    .where(eq(purchaseOrdersTable.id, (req.params.id as string)));
   if (!row) throw createError("Not found", 404);
   return res.json(row);
 }));
@@ -65,14 +65,14 @@ router.patch("/:id", asyncHandler(async (req, res) => {
   const [row] = await db
     .update(purchaseOrdersTable)
     .set(body)
-    .where(eq(purchaseOrdersTable.id, req.params.id))
+    .where(eq(purchaseOrdersTable.id, (req.params.id as string)))
     .returning();
   if (!row) throw createError("Not found", 404);
   return res.json(row);
 }));
 
 router.delete("/:id", asyncHandler(async (req, res) => {
-  await db.delete(purchaseOrdersTable).where(eq(purchaseOrdersTable.id, req.params.id));
+  await db.delete(purchaseOrdersTable).where(eq(purchaseOrdersTable.id, (req.params.id as string)));
   return res.status(204).send();
 }));
 

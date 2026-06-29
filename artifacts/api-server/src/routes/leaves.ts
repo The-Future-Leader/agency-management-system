@@ -55,7 +55,7 @@ router.post("/leaves/:id/approve", requireAuth, asyncHandler(async (req, res) =>
   const userId = (req as any).userId;
   const [updated] = await db.update(leaveRequests)
     .set({ status: "APPROVED", reviewedBy: userId })
-    .where(eq(leaveRequests.id, req.params.id))
+    .where(eq(leaveRequests.id, (req.params.id as string)))
     .returning();
   if (!updated) throw createError("Not found", 404);
   return res.json({ ...updated, createdAt: updated.createdAt?.toISOString() ?? null });
@@ -65,7 +65,7 @@ router.post("/leaves/:id/reject", requireAuth, asyncHandler(async (req, res) => 
   const userId = (req as any).userId;
   const [updated] = await db.update(leaveRequests)
     .set({ status: "REJECTED", reviewedBy: userId })
-    .where(eq(leaveRequests.id, req.params.id))
+    .where(eq(leaveRequests.id, (req.params.id as string)))
     .returning();
   if (!updated) throw createError("Not found", 404);
   return res.json({ ...updated, createdAt: updated.createdAt?.toISOString() ?? null });

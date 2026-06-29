@@ -56,14 +56,14 @@ router.patch("/:id", asyncHandler(async (req, res) => {
   const [row] = await db
     .update(leadsTable)
     .set(updates)
-    .where(eq(leadsTable.id, req.params.id))
+    .where(eq(leadsTable.id, (req.params.id as string)))
     .returning();
   if (!row) throw createError("Not found", 404);
   return res.json(row);
 }));
 
 router.delete("/:id", asyncHandler(async (req, res) => {
-  await db.delete(leadsTable).where(eq(leadsTable.id, req.params.id));
+  await db.delete(leadsTable).where(eq(leadsTable.id, (req.params.id as string)));
   return res.status(204).send();
 }));
 

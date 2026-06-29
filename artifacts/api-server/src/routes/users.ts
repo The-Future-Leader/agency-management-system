@@ -78,7 +78,7 @@ router.patch("/:id", requireAdmin, asyncHandler(async (req, res) => {
       .select({ id: usersTable.id })
       .from(usersTable)
       .where(eq(usersTable.email, body.email));
-    if (conflict && conflict.id !== req.params.id) {
+    if (conflict && conflict.id !== (req.params.id as string)) {
       throw createError("Email is already in use by another account", 409);
     }
   }
@@ -90,7 +90,7 @@ router.patch("/:id", requireAdmin, asyncHandler(async (req, res) => {
   const [row] = await db
     .update(usersTable)
     .set(updateData)
-    .where(eq(usersTable.id, req.params.id))
+    .where(eq(usersTable.id, (req.params.id as string)))
     .returning(USER_SAFE_COLS);
 
   if (!row) throw createError("User not found", 404);
@@ -98,7 +98,7 @@ router.patch("/:id", requireAdmin, asyncHandler(async (req, res) => {
 }));
 
 router.delete("/:id", requireAdmin, asyncHandler(async (req, res) => {
-  await db.delete(usersTable).where(eq(usersTable.id, req.params.id));
+  await db.delete(usersTable).where(eq(usersTable.id, (req.params.id as string)));
   return res.status(204).send();
 }));
 

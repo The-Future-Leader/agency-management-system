@@ -65,7 +65,7 @@ router.get("/", asyncHandler(async (req, res) => {
 }));
 
 router.get("/:id", asyncHandler(async (req, res) => {
-  const [row] = await db.select().from(quotationsTable).where(eq(quotationsTable.id, req.params.id));
+  const [row] = await db.select().from(quotationsTable).where(eq(quotationsTable.id, (req.params.id as string)));
   if (!row) throw createError("Not found", 404);
   return res.json(row);
 }));
@@ -84,19 +84,19 @@ router.patch("/:id", asyncHandler(async (req, res) => {
   const [row] = await db
     .update(quotationsTable)
     .set(body)
-    .where(eq(quotationsTable.id, req.params.id))
+    .where(eq(quotationsTable.id, (req.params.id as string)))
     .returning();
   if (!row) throw createError("Not found", 404);
   return res.json(row);
 }));
 
 router.delete("/:id", asyncHandler(async (req, res) => {
-  await db.delete(quotationsTable).where(eq(quotationsTable.id, req.params.id));
+  await db.delete(quotationsTable).where(eq(quotationsTable.id, (req.params.id as string)));
   return res.status(204).send();
 }));
 
 router.post("/:id/convert-to-invoice", asyncHandler(async (req, res) => {
-  const [quot] = await db.select().from(quotationsTable).where(eq(quotationsTable.id, req.params.id));
+  const [quot] = await db.select().from(quotationsTable).where(eq(quotationsTable.id, (req.params.id as string)));
   if (!quot) throw createError("Quotation not found", 404);
 
   const existing = await db.select({ number: invoicesTable.number }).from(invoicesTable);
@@ -127,7 +127,7 @@ router.post("/:id/convert-to-invoice", asyncHandler(async (req, res) => {
     })
     .returning();
 
-  await db.update(quotationsTable).set({ status: "APPROVED" }).where(eq(quotationsTable.id, req.params.id));
+  await db.update(quotationsTable).set({ status: "APPROVED" }).where(eq(quotationsTable.id, (req.params.id as string)));
 
   return res.status(201).json(invoice);
 }));

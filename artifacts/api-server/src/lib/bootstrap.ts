@@ -182,6 +182,11 @@ export async function bootstrapDatabase(): Promise<void> {
       "reference_links JSON", "shoot_date TEXT", "assets_link TEXT",
       "format TEXT", "needs_revision TEXT DEFAULT 'false'",
       "custom_properties JSON", "comments JSON",
+      "approval_status TEXT DEFAULT 'PENDING'",
+      "approved_by TEXT",
+      "approved_at TIMESTAMP",
+      "rejection_note TEXT",
+      "media_urls JSONB DEFAULT '[]'",
     ]) {
       await db.execute(`ALTER TABLE content_posts ADD COLUMN IF NOT EXISTS ${col}`).catch(() => {});
     }
@@ -359,6 +364,37 @@ export async function bootstrapDatabase(): Promise<void> {
         label TEXT,
         created_at TIMESTAMP NOT NULL DEFAULT NOW(),
         expires_at TIMESTAMP
+      )
+    `);
+
+    // Add parentId (subtasks) to tasks
+    await db.execute(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS parent_id TEXT REFERENCES tasks(id) ON DELETE CASCADE`).catch(() => {});
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS file_attachments (
+        id TEXT PRIMARY KEY,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        url TEXT NOT NULL,
+        uploaded_by TEXT REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS leave_balances (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        year INTEGER NOT NULL,
+        casual_total INTEGER DEFAULT 12,
+        casual_used INTEGER DEFAULT 0,
+        sick_total INTEGER DEFAULT 6,
+        sick_used INTEGER DEFAULT 0,
+        earned_total INTEGER DEFAULT 15,
+        earned_used INTEGER DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(user_id, year)
       )
     `);
 

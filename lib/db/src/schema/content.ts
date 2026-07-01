@@ -21,8 +21,13 @@ export const contentPostsTable = pgTable("content_posts", {
   needsRevision: text("needs_revision").default("false"),
   referenceLinks: json("reference_links").$type<{ label: string; url: string }[]>(),
   customProperties: json("custom_properties").$type<{ key: string; value: string }[]>(),
-  comments: json("comments").$type<{ id: string; text: string; createdAt: string }[]>(),
+  comments: json("comments").$type<{ id: string; userId: string | null; comment: string; createdAt: string }[]>(),
   title: text("title"),
+  approvalStatus: text("approval_status").default("PENDING"),
+  approvedBy: text("approved_by"),
+  approvedAt: timestamp("approved_at"),
+  rejectionNote: text("rejection_note"),
+  mediaUrls: json("media_urls").$type<string[]>(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

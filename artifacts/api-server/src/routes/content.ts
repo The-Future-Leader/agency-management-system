@@ -66,6 +66,30 @@ router.delete("/:id", asyncHandler(async (req, res) => {
   return res.status(204).send();
 }));
 
+// ─── Approval Routes ─────────────────────────────────────────
+
+router.post("/:id/approve", asyncHandler(async (req, res) => {
+  const userId = (req as any).user?.id ?? null;
+  const [row] = await db
+    .update(contentPostsTable)
+    .set({ approvalStatus: "APPROVED", approvedBy: userId, approvedAt: new Date() } as any)
+    .where(eq(contentPostsTable.id, req.params.id as string))
+    .returning();
+  if (!row) throw createError("Not found", 404);
+  return res.json(row);
+}));
+
+router.post("/:id/reject", asyncHandler(async (req, res) => {
+  const { note } = req.body as { note?: string };
+  const [row] = await db
+    .update(contentPostsTable)
+    .set({ approvalStatus: "REJECTED", rejectionNote: note ?? null } as any)
+    .where(eq(contentPostsTable.id, req.params.id as string))
+    .returning();
+  if (!row) throw createError("Not found", 404);
+  return res.json(row);
+}));
+
 // ─── Share Calendar Routes ────────────────────────────────────
 
 router.post("/shares", asyncHandler(async (req, res) => {

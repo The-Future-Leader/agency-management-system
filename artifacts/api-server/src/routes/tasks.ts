@@ -75,4 +75,16 @@ router.delete("/:id", asyncHandler(async (req, res) => {
   return res.status(204).send();
 }));
 
+// ─── Subtasks ─────────────────────────────────────────────────
+
+router.get("/:id/subtasks", asyncHandler(async (req, res) => {
+  const result = await db.execute(
+    `SELECT t.*, u.name as assignee_name FROM tasks t
+     LEFT JOIN users u ON t.assignee_id = u.id
+     WHERE t.parent_id = $1 ORDER BY t.created_at ASC`,
+    [req.params.id]
+  );
+  return res.json(result.rows ?? result);
+}));
+
 export default router;

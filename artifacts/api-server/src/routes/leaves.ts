@@ -71,4 +71,28 @@ router.post("/leaves/:id/reject", requireAuth, asyncHandler(async (req, res) => 
   return res.json({ ...updated, createdAt: updated.createdAt?.toISOString() ?? null });
 }));
 
+// GET /api/leaves/balance?userId=&year=
+router.get("/leaves/balance", requireAuth, asyncHandler(async (req, res) => {
+  const { userId, year } = req.query as Record<string, string>;
+  const targetYear = year ? parseInt(year, 10) : new Date().getFullYear();
+  const targetUserId = userId || (req as any).userId;
+  if (!targetUserId) throw createError("userId is required", 400);
+
+  const result = await db.execute(
+    `SELECT * FROM leave_balances WHERE user_id = $1 AND year = $2`,
+    [targetUserId, targetYear]
+  );
+  const rows = result.rows ?? result;
+  if (rows.length === 0) {
+    // Return default balance if no row exists yet
+    return res.json({
+      userId: targetUserId, year: targetYear,
+      casualTotal: 12, casualUsed: 0,
+      sickTotal: 6, sickUsed: 0,
+      earnedTotal: 15, earnedUsed: 0,
+    });
+  }
+  return res.json(rows[0]);
+}));
+
 export default router;

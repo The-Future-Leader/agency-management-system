@@ -13,6 +13,7 @@ export const tasksTable = pgTable("tasks", {
   assigneeId: text("assignee_id").references(() => usersTable.id, { onDelete: "set null" }),
   dueDate: text("due_date"),
   description: text("description"),
+  parentId: text("parent_id"),  // self-reference added via ALTER TABLE in bootstrap
   createdAt: timestamp("created_at").defaultNow(),
 });
 

@@ -413,9 +413,6 @@ importers:
       multer:
         specifier: ^2.2.0
         version: 2.2.0
-      nodemailer:
-        specifier: ^7.0.1
-        version: 7.0.13
       pino:
         specifier: ^9.14.0
         version: 9.14.0
@@ -3420,10 +3417,6 @@ packages:
 
   node-releases@2.0.38:
     resolution: {integrity: sha512-3qT/88Y3FbH/Kx4szpQQ4HzUbVrHPKTLVpVocKiLfoYvw9XSGOX2FmD2d6DrXbVYyAQTF2HeF6My8jmzx7/CRw==}
-
-  nodemailer@7.0.13:
-    resolution: {integrity: sha512-PNDFSJdP+KFgdsG3ZzMXCgquO7I6McjY2vlqILjtJd0hy8wEvtugS9xKRF2NWlPNGxvLCXlTNIae4serI7dinw==}
-    engines: {node: '>=6.0.0'}
 
   normalize-url@6.1.0:
     resolution: {integrity: sha512-DlL+XwOy3NxAQ8xuC0okPgK46iuVNAK01YN7RueYBqqFeGsBjV9XmCAzAdgt+667bCl5kPh9EqKKDwnaPG1I7A==}
@@ -7274,8 +7267,6 @@ snapshots:
     optional: true
 
   node-releases@2.0.38: {}
-
-  nodemailer@7.0.13: {}
 
   normalize-url@6.1.0: {}
 

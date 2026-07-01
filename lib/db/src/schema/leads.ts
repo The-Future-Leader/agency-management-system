@@ -10,6 +10,10 @@ export const leadsTable = pgTable("leads", {
   contactName: text("contact_name"),
   email: text("email"),
   value: real("value"),
+  probability: integer("probability").default(0),
+  expectedCloseDate: text("expected_close_date"),
+  source: text("source"),
+  notes: text("notes"),
   stageChangedAt: timestamp("stage_changed_at").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
 });

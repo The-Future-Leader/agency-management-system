@@ -2,14 +2,15 @@
 # One-time GitHub push setup script
 # Run this in the Replit Shell: bash push-to-github.sh
 
-if [ -z "$GITHUB_TOKEN" ]; then
-  echo "❌ GITHUB_TOKEN secret not found. Make sure it's set in Replit Secrets."
+TOKEN="${GITHUB_TOKEN:-$GITHUB_PERSONAL_ACCESS_TOKEN}"
+if [ -z "$TOKEN" ]; then
+  echo "❌ No GitHub token found. Set GITHUB_TOKEN or GITHUB_PERSONAL_ACCESS_TOKEN in Replit Secrets."
   exit 1
 fi
 
 # Store credentials so Replit's Git UI works too
 git config --global credential.helper store
-echo "https://nileshrajput203:${GITHUB_TOKEN}@github.com" > ~/.git-credentials
+echo "https://nileshrajput203:${TOKEN}@github.com" > ~/.git-credentials
 chmod 600 ~/.git-credentials
 
 echo "✅ Credentials configured"

@@ -9,6 +9,20 @@ import { signToken, verifyToken } from "../lib/jwt";
 
 const router = Router();
 
+router.use(async (req: any, res: any, next: any) => {
+  if (req.path === "/login") return next();
+  const auth = req.headers.authorization || "";
+  const token = auth.replace(/^Bearer\s+/i, "");
+  if (!token) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const payload = verifyToken(token);
+    req.user = { id: payload.sub, clientId: payload.sub };
+    return next();
+  } catch {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+});
+
 export async function portalAuthMiddleware(req: any, res: any, next: any) {
   const header = req.headers.authorization || "";
   const token = header.replace(/^Bearer\s+/i, "");

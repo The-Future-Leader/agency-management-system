@@ -34,6 +34,34 @@ router.post("/", asyncHandler(async (req, res) => {
   return res.status(201).json(row);
 }));
 
+router.get("/:id/budget", asyncHandler(async (req, res) => {
+  const [row] = await db.select({
+    id: projectsTable.id,
+    name: projectsTable.name,
+    budget: projectsTable.budget,
+    currency: projectsTable.currency,
+    budgetSpent: projectsTable.budgetSpent,
+  }).from(projectsTable).where(eq(projectsTable.id, (req.params.id as string)));
+  if (!row) throw createError("Not found", 404);
+  return res.json({
+    ...row,
+    remaining: (Number(row.budget ?? 0) - Number(row.budgetSpent ?? 0)).toFixed(2),
+  });
+}));
+
+router.get("/:id/time-summary", asyncHandler(async (req, res) => {
+  const result = await db.execute(
+    `SELECT COALESCE(SUM(CASE WHEN is_billable THEN duration_min ELSE 0 END), 0)::int AS billable_minutes, COALESCE(SUM(CASE WHEN is_billable THEN duration_min/60.0 ELSE 0 END), 0)::float AS billable_hours FROM time_entries WHERE project_id = $1`,
+    [req.params.id],
+  );
+  const row = (result.rows ?? [])[0] as any;
+  return res.json({
+    projectId: req.params.id,
+    billableMinutes: Number(row?.billable_minutes ?? 0),
+    billableHours: Number(row?.billable_hours ?? 0),
+  });
+}));
+
 router.get("/:id", asyncHandler(async (req, res) => {
   const [row] = await db
     .select({
@@ -55,21 +83,6 @@ router.get("/:id", asyncHandler(async (req, res) => {
     .where(eq(projectsTable.id, (req.params.id as string)));
   if (!row) throw createError("Not found", 404);
   return res.json(row);
-}));
-
-router.get("/:id/budget", asyncHandler(async (req, res) => {
-  const [row] = await db.select({
-    id: projectsTable.id,
-    name: projectsTable.name,
-    budget: projectsTable.budget,
-    currency: projectsTable.currency,
-    budgetSpent: projectsTable.budgetSpent,
-  }).from(projectsTable).where(eq(projectsTable.id, (req.params.id as string)));
-  if (!row) throw createError("Not found", 404);
-  return res.json({
-    ...row,
-    remaining: (Number(row.budget ?? 0) - Number(row.budgetSpent ?? 0)).toFixed(2),
-  });
 }));
 
 router.patch("/:id", asyncHandler(async (req, res) => {

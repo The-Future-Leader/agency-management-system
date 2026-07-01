@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { bootstrapDatabase } from "./lib/bootstrap";
+import { runRecurringInvoiceJob } from "./routes/invoices";
 
 const rawPort = process.env["PORT"] || "5000";
 const port = Number(rawPort);
@@ -17,6 +18,9 @@ bootstrapDatabase()
         process.exit(1);
       }
       logger.info({ port }, "Server listening");
+      setInterval(() => {
+        void runRecurringInvoiceJob().catch((error) => logger.error({ err: error }, "Recurring invoice job failed"));
+      }, 24 * 60 * 60 * 1000);
     });
   })
   .catch((err) => {

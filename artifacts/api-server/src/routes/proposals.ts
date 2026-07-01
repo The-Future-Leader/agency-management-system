@@ -32,8 +32,9 @@ router.get("/", asyncHandler(async (req, res) => {
 router.post("/", asyncHandler(async (req, res) => {
   const { id: _id, createdAt: _ts, ...body } = req.body;
   if (!body.clientId) body.clientId = null;
-  const [row] = await db.insert(proposalsTable).values(body).returning();
-  return res.status(201).json(row);
+  const signTokenValue = body.signToken ?? crypto.randomUUID();
+  const [row] = await db.insert(proposalsTable).values({ ...body, signToken: signTokenValue }).returning();
+  return res.status(201).json({ ...row, signToken: signTokenValue });
 }));
 
 router.post("/:id/sign", asyncHandler(async (req, res) => {

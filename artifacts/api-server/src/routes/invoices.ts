@@ -1,4 +1,6 @@
 import { Router } from "express";
+import fs from "fs/promises";
+import path from "path";
 import { db } from "@workspace/db";
 import { invoicesTable, clientsTable, invoiceTemplatesTable } from "@workspace/db/schema";
 import { eq, desc, sql } from "drizzle-orm";
@@ -119,7 +121,7 @@ router.post("/:id/send-email", asyncHandler(async (req, res) => {
   return res.json({ ...updated, sentAt: sentAt.toISOString() });
 }));
 
-router.post("/recurring/run", asyncHandler(async (_req, res) => {
+export async function runRecurringInvoiceJob(): Promise<number> {
   const templates = await db.select().from(invoiceTemplatesTable).where(eq(invoiceTemplatesTable.status, "ACTIVE"));
   for (const template of templates) {
     const next = template.nextRunAt ? new Date(template.nextRunAt) : new Date();
@@ -136,7 +138,12 @@ router.post("/recurring/run", asyncHandler(async (_req, res) => {
     await db.update(invoiceTemplatesTable).set({ lastRunAt: new Date(), nextRunAt: new Date(Date.now() + 24 * 60 * 60 * 1000) }).where(eq(invoiceTemplatesTable.id, template.id));
     if (row) { }
   }
-  return res.json({ created: templates.length });
+  return templates.length;
+}
+
+router.post("/recurring/run", asyncHandler(async (_req, res) => {
+  const created = await runRecurringInvoiceJob();
+  return res.json({ created });
 }));
 
 router.delete("/:id", asyncHandler(async (req, res) => {

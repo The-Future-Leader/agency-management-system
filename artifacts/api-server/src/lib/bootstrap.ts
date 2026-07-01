@@ -364,6 +364,23 @@ export async function bootstrapDatabase(): Promise<void> {
       )
     `);
 
+    const proposalColumns = await db.execute(`SELECT column_name FROM information_schema.columns WHERE table_name = 'proposals'`);
+    const proposalColumnNames = new Set((proposalColumns.rows ?? []).map((row: any) => row.column_name));
+    for (const col of [
+      ["template", "TEXT"],
+      ["value", "NUMERIC"],
+      ["scope", "TEXT"],
+      ["deliverables", "TEXT"],
+      ["timeline", "TEXT"],
+      ["valid_until", "TEXT"],
+      ["sign_token", "TEXT"],
+      ["signed_at", "TIMESTAMP"],
+    ] as Array<[string, string]>) {
+      if (!proposalColumnNames.has(col[0])) {
+        await db.execute(`ALTER TABLE proposals ADD COLUMN ${col[0]} ${col[1]}`).catch(() => {});
+      }
+    }
+
     await db.execute(`
       CREATE TABLE IF NOT EXISTS invoice_templates (
         id TEXT PRIMARY KEY,

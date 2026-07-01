@@ -15,6 +15,8 @@ export const proposalsTable = pgTable("proposals", {
   deliverables: text("deliverables"),
   timeline: text("timeline"),
   notes: text("notes"),
+  signToken: text("sign_token"),
+  signedAt: timestamp("signed_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

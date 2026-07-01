@@ -36,6 +36,14 @@ router.post("/", asyncHandler(async (req, res) => {
   return res.status(201).json(row);
 }));
 
+router.post("/:id/sign", asyncHandler(async (req, res) => {
+  const [row] = await db.select().from(proposalsTable).where(eq(proposalsTable.id, (req.params.id as string)));
+  if (!row) throw createError("Not found", 404);
+  const signedAt = new Date();
+  const [updated] = await db.update(proposalsTable).set({ status: "SIGNED", signToken: null, signedAt }).where(eq(proposalsTable.id, row.id)).returning();
+  return res.json(updated);
+}));
+
 router.patch("/:id", asyncHandler(async (req, res) => {
   const { id: _id, createdAt: _ts, ...body } = req.body;
   if (body.clientId === "") body.clientId = null;

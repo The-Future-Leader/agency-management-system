@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { leaveRequests, users } from "@workspace/db/schema";
+import { leaveRequests, users, attendance } from "@workspace/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 import { asyncHandler } from "../lib/asyncHandler";
@@ -58,6 +58,31 @@ router.post("/leaves/:id/approve", requireAuth, asyncHandler(async (req, res) =>
     .where(eq(leaveRequests.id, (req.params.id as string)))
     .returning();
   if (!updated) throw createError("Not found", 404);
+
+  const start = new Date(updated.startDate as string);
+  const end = new Date(updated.endDate as string);
+  const dates: string[] = [];
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  for (const date of dates) {
+    const existing = await db.select({ id: attendance.id }).from(attendance).where(and(eq(attendance.userId, updated.userId), eq(attendance.date, date)));
+    if (existing.length === 0) {
+      await db.insert(attendance).values({
+        id: crypto.randomUUID(),
+        userId: updated.userId,
+        date,
+        checkInAt: new Date(`${date}T09:00:00`),
+        checkOutAt: new Date(`${date}T17:00:00`),
+        isLate: false,
+        overtimeMin: 0,
+      });
+    }
+  }
+
   return res.json({ ...updated, createdAt: updated.createdAt?.toISOString() ?? null });
 }));
 

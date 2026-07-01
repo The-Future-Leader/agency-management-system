@@ -7,7 +7,10 @@ import { rateLimit } from "express-rate-limit";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import publicRouter from "./routes/publicCalendar";
-import { errorHandler } from "./middleware/errorHandler";
+import { errorHandler, createError } from "./middleware/errorHandler";
+import { db } from "@workspace/db";
+import { proposalsTable } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
 
 const app: Express = express();
 
@@ -49,6 +52,16 @@ const authLimiter = rateLimit({
 app.use("/public", publicRouter);
 app.use("/api/auth", authLimiter);
 app.use("/api", router);
+
+app.get("/sign/:token", async (req, res) => {
+  const token = req.params.token;
+  const [proposal] = await db.select().from(proposalsTable).where(eq(proposalsTable.signToken, token));
+  if (!proposal) {
+    res.status(404).send("Proposal not found");
+    return;
+  }
+  res.type("html").send(`<!doctype html><html><body><h1>Proposal signing</h1><p>Proposal: ${proposal.title ?? proposal.id}</p><p>Status: ${proposal.status ?? "DRAFT"}</p><form method="post" action="/api/proposals/${proposal.id}/sign"><button type="submit">Sign proposal</button></form></body></html>`);
+});
 
 if (process.env.SERVE_STATIC === "true") {
   const publicDir = path.resolve(__dirname, "../../agency-os/dist/public");

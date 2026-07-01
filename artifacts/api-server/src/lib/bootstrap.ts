@@ -119,6 +119,10 @@ export async function bootstrapDatabase(): Promise<void> {
         email TEXT,
         stage TEXT DEFAULT 'LEAD',
         value NUMERIC,
+        probability INTEGER DEFAULT 0,
+        expected_close_date TEXT,
+        source TEXT,
+        notes TEXT,
         stage_changed_at TIMESTAMP DEFAULT NOW(),
         created_at TIMESTAMP DEFAULT NOW()
       )
@@ -129,6 +133,10 @@ export async function bootstrapDatabase(): Promise<void> {
       "title TEXT",
       "contact_name TEXT",
       "value NUMERIC",
+      "probability INTEGER DEFAULT 0",
+      "expected_close_date TEXT",
+      "source TEXT",
+      "notes TEXT",
       "stage_changed_at TIMESTAMP DEFAULT NOW()",
     ]) {
       await db.execute(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS ${col}`).catch(() => {});
@@ -141,12 +149,24 @@ export async function bootstrapDatabase(): Promise<void> {
         client_id TEXT REFERENCES clients(id) ON DELETE CASCADE,
         status TEXT DEFAULT 'PLANNING',
         start_date TEXT,
-        end_date TEXT,
+        due_date TEXT,
+        description TEXT,
         budget NUMERIC,
-        notes TEXT,
+        currency TEXT DEFAULT 'INR',
+        budget_spent NUMERIC DEFAULT 0,
         created_at TIMESTAMP DEFAULT NOW()
       )
     `);
+
+    for (const col of [
+      "budget NUMERIC",
+      "currency TEXT DEFAULT 'INR'",
+      "budget_spent NUMERIC DEFAULT 0",
+      "due_date TEXT",
+      "description TEXT",
+    ]) {
+      await db.execute(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS ${col}`).catch(() => {});
+    }
 
     await db.execute(`
       CREATE TABLE IF NOT EXISTS tasks (
@@ -338,6 +358,35 @@ export async function bootstrapDatabase(): Promise<void> {
         valid_until TEXT,
         total NUMERIC DEFAULT 0,
         notes TEXT,
+        sign_token TEXT,
+        signed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS invoice_templates (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        client_id TEXT REFERENCES clients(id) ON DELETE SET NULL,
+        description TEXT,
+        amount NUMERIC DEFAULT 0,
+        currency TEXT DEFAULT 'INR',
+        frequency TEXT DEFAULT 'MONTHLY',
+        next_run_at TIMESTAMP DEFAULT NOW(),
+        last_run_at TIMESTAMP,
+        status TEXT DEFAULT 'ACTIVE',
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS client_users (
+        id TEXT PRIMARY KEY,
+        client_id TEXT REFERENCES clients(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT NOW()
       )
     `);
@@ -408,6 +457,29 @@ export async function bootstrapDatabase(): Promise<void> {
         created_at TIMESTAMP DEFAULT NOW()
       )
     `);
+
+    await db.execute(`
+      ALTER TABLE invoices ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP
+    `).catch(() => {});
+
+    await db.execute(`
+      ALTER TABLE proposals ADD COLUMN IF NOT EXISTS sign_token TEXT
+    `).catch(() => {});
+
+    await db.execute(`
+      ALTER TABLE proposals ADD COLUMN IF NOT EXISTS signed_at TIMESTAMP
+    `).catch(() => {});
+
+    for (const col of [
+      "template TEXT",
+      "value NUMERIC",
+      "scope TEXT",
+      "deliverables TEXT",
+      "timeline TEXT",
+      "valid_until TEXT",
+    ]) {
+      await db.execute(`ALTER TABLE proposals ADD COLUMN IF NOT EXISTS ${col}`).catch(() => {});
+    }
 
     await db.execute(`
       CREATE TABLE IF NOT EXISTS time_entries (

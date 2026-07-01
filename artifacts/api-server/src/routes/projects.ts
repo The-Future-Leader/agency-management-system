@@ -19,6 +19,9 @@ router.get("/", asyncHandler(async (req, res) => {
       startDate: projectsTable.startDate,
       dueDate: projectsTable.dueDate,
       description: projectsTable.description,
+      budget: projectsTable.budget,
+      currency: projectsTable.currency,
+      budgetSpent: projectsTable.budgetSpent,
     })
     .from(projectsTable)
     .leftJoin(clientsTable, eq(projectsTable.clientId, clientsTable.id));
@@ -43,12 +46,30 @@ router.get("/:id", asyncHandler(async (req, res) => {
       startDate: projectsTable.startDate,
       dueDate: projectsTable.dueDate,
       description: projectsTable.description,
+      budget: projectsTable.budget,
+      currency: projectsTable.currency,
+      budgetSpent: projectsTable.budgetSpent,
     })
     .from(projectsTable)
     .leftJoin(clientsTable, eq(projectsTable.clientId, clientsTable.id))
     .where(eq(projectsTable.id, (req.params.id as string)));
   if (!row) throw createError("Not found", 404);
   return res.json(row);
+}));
+
+router.get("/:id/budget", asyncHandler(async (req, res) => {
+  const [row] = await db.select({
+    id: projectsTable.id,
+    name: projectsTable.name,
+    budget: projectsTable.budget,
+    currency: projectsTable.currency,
+    budgetSpent: projectsTable.budgetSpent,
+  }).from(projectsTable).where(eq(projectsTable.id, (req.params.id as string)));
+  if (!row) throw createError("Not found", 404);
+  return res.json({
+    ...row,
+    remaining: (Number(row.budget ?? 0) - Number(row.budgetSpent ?? 0)).toFixed(2),
+  });
 }));
 
 router.patch("/:id", asyncHandler(async (req, res) => {

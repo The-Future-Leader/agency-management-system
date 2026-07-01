@@ -1,14 +1,19 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { tasksTable, projectsTable, usersTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { asyncHandler } from "../lib/asyncHandler";
 import { createError } from "../middleware/errorHandler";
 
 const router = Router();
 
 router.get("/", asyncHandler(async (req, res) => {
-  const rows = await db
+  const { page = "1", limit = "50" } = req.query as Record<string, string>;
+  const pageNum = Math.max(1, Number(page) || 1);
+  const limitNum = Math.max(1, Math.min(100, Number(limit) || 50));
+  const offset = (pageNum - 1) * limitNum;
+  const [rows, [{ total }]] = await Promise.all([
+    db
     .select({
       id: tasksTable.id,
       title: tasksTable.title,
@@ -23,8 +28,12 @@ router.get("/", asyncHandler(async (req, res) => {
     })
     .from(tasksTable)
     .leftJoin(projectsTable, eq(tasksTable.projectId, projectsTable.id))
-    .leftJoin(usersTable, eq(tasksTable.assigneeId, usersTable.id));
-  return res.json(rows);
+    .leftJoin(usersTable, eq(tasksTable.assigneeId, usersTable.id))
+    .limit(limitNum)
+    .offset(offset),
+    db.select({ total: sql<number>`count(*)::int` }).from(tasksTable),
+  ]);
+  return res.json({ items: rows, page: pageNum, limit: limitNum, total });
 }));
 
 router.post("/", asyncHandler(async (req, res) => {

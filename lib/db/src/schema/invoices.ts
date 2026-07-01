@@ -44,6 +44,7 @@ export const invoicesTable = pgTable("invoices", {
   discount: real("discount").default(0),
   discountType: text("discount_type").default("FIXED"),
   total: real("total").default(0),
+  sentAt: timestamp("sent_at"),
 
   // Footer
   notes: text("notes"),

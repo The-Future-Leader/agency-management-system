@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { clientsTable, invoicesTable } from "@workspace/db/schema";
-import { eq, ilike, or, and } from "drizzle-orm";
+import { eq, ilike, or, and, sql } from "drizzle-orm";
 import { asyncHandler } from "../lib/asyncHandler";
 import { createError } from "../middleware/errorHandler";
 
@@ -33,7 +33,7 @@ function calcHealthScore(invoices: { status: string | null; dueDate: string | nu
 const router = Router();
 
 router.get("/", asyncHandler(async (req, res) => {
-  const { search, category } = req.query as Record<string, string>;
+  const { search, category, page = "1", limit = "50" } = req.query as Record<string, string>;
 
   const conditions = [];
   if (search) {
@@ -46,12 +46,16 @@ router.get("/", asyncHandler(async (req, res) => {
   }
   if (category) conditions.push(eq(clientsTable.category, category));
 
-  const rows = await db
-    .select()
-    .from(clientsTable)
-    .where(conditions.length ? and(...conditions) : undefined);
+  const pageNum = Math.max(1, Number(page) || 1);
+  const limitNum = Math.max(1, Math.min(100, Number(limit) || 50));
+  const offset = (pageNum - 1) * limitNum;
 
-  return res.json(rows);
+  const [rows, [{ total }]] = await Promise.all([
+    db.select().from(clientsTable).where(conditions.length ? and(...conditions) : undefined).limit(limitNum).offset(offset),
+    db.select({ total: sql<number>`count(*)::int` }).from(clientsTable).where(conditions.length ? and(...conditions) : undefined),
+  ]);
+
+  return res.json({ items: rows, page: pageNum, limit: limitNum, total });
 }));
 
 router.post("/", asyncHandler(async (req, res) => {

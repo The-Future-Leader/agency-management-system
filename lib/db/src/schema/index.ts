@@ -14,6 +14,7 @@ export * from "./settings";
 export * from "./purchaseOrders";
 export * from "./activityLogs";
 export * from "./leadContacts";
+export * from "./invoiceTemplates";
 
 export { usersTable as users } from "./users";
 export { clientsTable as clients } from "./clients";
@@ -28,3 +29,4 @@ export { attendanceTable as attendance } from "./attendance";
 export { leaveRequestsTable as leaveRequests } from "./leaves";
 export { agencySettingsTable as agencySettings } from "./settings";
 export { purchaseOrdersTable as purchaseOrders } from "./purchaseOrders";
+export { invoiceTemplatesTable as invoiceTemplates } from "./invoiceTemplates";

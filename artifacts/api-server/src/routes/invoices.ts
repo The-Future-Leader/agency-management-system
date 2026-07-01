@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { invoicesTable, clientsTable } from "@workspace/db/schema";
+import { invoicesTable, clientsTable, invoiceTemplatesTable } from "@workspace/db/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import { asyncHandler } from "../lib/asyncHandler";
 import { createError } from "../middleware/errorHandler";
@@ -23,7 +23,12 @@ router.get("/financial-summary", asyncHandler(async (req, res) => {
 }));
 
 router.get("/", asyncHandler(async (req, res) => {
-  const rows = await db
+  const { page = "1", limit = "50" } = req.query as Record<string, string>;
+  const pageNum = Math.max(1, Number(page) || 1);
+  const limitNum = Math.max(1, Math.min(100, Number(limit) || 50));
+  const offset = (pageNum - 1) * limitNum;
+  const [rows, [{ total }]] = await Promise.all([
+    db
     .select({
       id: invoicesTable.id,
       number: invoicesTable.number,
@@ -66,12 +71,18 @@ router.get("/", asyncHandler(async (req, res) => {
     })
     .from(invoicesTable)
     .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
-    .orderBy(desc(invoicesTable.createdAt));
-  return res.json(rows);
+    .orderBy(desc(invoicesTable.createdAt))
+    .limit(limitNum)
+    .offset(offset),
+    db.select({ total: sql<number>`count(*)::int` }).from(invoicesTable),
+  ]);
+  return res.json({ items: rows, page: pageNum, limit: limitNum, total });
 }));
 
 router.post("/", asyncHandler(async (req, res) => {
   const { id: _id, createdAt: _ts, ...body } = req.body;
+  if (!body.clientId) body.clientId = null;
+  if (typeof body.total !== "undefined" && typeof body.total !== "number") throw createError("total must be a number", 400);
   if (!body.clientId) body.clientId = null;
   if (!body.number) {
     const existing = await db.select({ number: invoicesTable.number }).from(invoicesTable);
@@ -89,6 +100,8 @@ router.post("/", asyncHandler(async (req, res) => {
 router.patch("/:id", asyncHandler(async (req, res) => {
   const { id: _id, createdAt: _ts, ...body } = req.body;
   if (body.clientId === "") body.clientId = null;
+  if (body.total && typeof body.total !== "number") throw createError("total must be a number", 400);
+  if (body.clientId === "") body.clientId = null;
   const [row] = await db
     .update(invoicesTable)
     .set(body)
@@ -96,6 +109,34 @@ router.patch("/:id", asyncHandler(async (req, res) => {
     .returning();
   if (!row) throw createError("Not found", 404);
   return res.json(row);
+}));
+
+router.post("/:id/send-email", asyncHandler(async (req, res) => {
+  const [row] = await db.select().from(invoicesTable).where(eq(invoicesTable.id, (req.params.id as string)));
+  if (!row) throw createError("Not found", 404);
+  const sentAt = new Date();
+  const [updated] = await db.update(invoicesTable).set({ status: "SENT", sentAt }).where(eq(invoicesTable.id, row.id)).returning();
+  return res.json({ ...updated, sentAt: sentAt.toISOString() });
+}));
+
+router.post("/recurring/run", asyncHandler(async (_req, res) => {
+  const templates = await db.select().from(invoiceTemplatesTable).where(eq(invoiceTemplatesTable.status, "ACTIVE"));
+  for (const template of templates) {
+    const next = template.nextRunAt ? new Date(template.nextRunAt) : new Date();
+    if (next > new Date()) continue;
+    const [row] = await db.insert(invoicesTable).values({
+      id: crypto.randomUUID(),
+      clientId: template.clientId,
+      number: `INV-${Date.now()}`,
+      status: "DRAFT",
+      total: template.amount ?? 0,
+      currency: template.currency ?? "INR",
+      notes: template.description ?? null,
+    }).returning();
+    await db.update(invoiceTemplatesTable).set({ lastRunAt: new Date(), nextRunAt: new Date(Date.now() + 24 * 60 * 60 * 1000) }).where(eq(invoiceTemplatesTable.id, template.id));
+    if (row) { }
+  }
+  return res.json({ created: templates.length });
 }));
 
 router.delete("/:id", asyncHandler(async (req, res) => {

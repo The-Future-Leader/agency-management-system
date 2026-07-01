@@ -94,10 +94,11 @@ export default function DashboardPage() {
   const isAdmin = user?.systemRole === "SUPER_ADMIN" || user?.systemRole === "MANAGER";
 
   // Filter My Tasks
-  const myTasks = (allTasks ?? []).filter(t => t.assigneeId === user?.id && t.status !== "DONE");
+  const taskList = Array.isArray(allTasks) ? allTasks : ((allTasks as any)?.items ?? []);
+  const myTasks = taskList.filter((t: any) => t.assigneeId === user?.id && t.status !== "DONE");
   
   // Filter Team Tasks (Admin only)
-  const teamTasks = (allTasks ?? []).filter(t => t.assigneeId !== user?.id && t.status !== "DONE");
+  const teamTasks = taskList.filter((t: any) => t.assigneeId !== user?.id && t.status !== "DONE");
 
   const toggleTaskStatus = (taskId: string, currentStatus: string, taskTitle: string) => {
     const newStatus = currentStatus === "DONE" ? "TODO" : "DONE";

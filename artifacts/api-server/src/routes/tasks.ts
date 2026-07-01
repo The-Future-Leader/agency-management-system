@@ -4,6 +4,8 @@ import { tasksTable, projectsTable, usersTable } from "@workspace/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { asyncHandler } from "../lib/asyncHandler";
 import { createError } from "../middleware/errorHandler";
+import { validateBody } from "../lib/validation";
+import { insertTaskSchema } from "@workspace/db/schema";
 
 const router = Router();
 
@@ -37,7 +39,7 @@ router.get("/", asyncHandler(async (req, res) => {
 }));
 
 router.post("/", asyncHandler(async (req, res) => {
-  const { id: _id, createdAt: _ts, ...body } = req.body;
+  const body = validateBody(insertTaskSchema, req.body);
   if (!body.projectId) body.projectId = null;
   if (!body.assigneeId) body.assigneeId = null;
   const [row] = await db.insert(tasksTable).values(body).returning();
@@ -67,7 +69,7 @@ router.get("/:id", asyncHandler(async (req, res) => {
 }));
 
 router.patch("/:id", asyncHandler(async (req, res) => {
-  const { id: _id, createdAt: _ts, ...body } = req.body;
+  const body = validateBody(insertTaskSchema.partial(), req.body);
   if (body.projectId === "") body.projectId = null;
   if (body.assigneeId === "") body.assigneeId = null;
   const [row] = await db

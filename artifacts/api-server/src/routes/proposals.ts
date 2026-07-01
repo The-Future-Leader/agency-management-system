@@ -4,6 +4,8 @@ import { proposalsTable, clientsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { asyncHandler } from "../lib/asyncHandler";
 import { createError } from "../middleware/errorHandler";
+import { validateBody } from "../lib/validation";
+import { insertProposalSchema } from "@workspace/db/schema";
 
 const router = Router();
 
@@ -30,7 +32,7 @@ router.get("/", asyncHandler(async (req, res) => {
 }));
 
 router.post("/", asyncHandler(async (req, res) => {
-  const { id: _id, createdAt: _ts, ...body } = req.body;
+  const body = validateBody(insertProposalSchema, req.body);
   if (!body.clientId) body.clientId = null;
   const signTokenValue = body.signToken ?? crypto.randomUUID();
   const [row] = await db.insert(proposalsTable).values({ ...body, signToken: signTokenValue }).returning();
@@ -46,7 +48,7 @@ router.post("/:id/sign", asyncHandler(async (req, res) => {
 }));
 
 router.patch("/:id", asyncHandler(async (req, res) => {
-  const { id: _id, createdAt: _ts, ...body } = req.body;
+  const body = validateBody(insertProposalSchema.partial(), req.body);
   if (body.clientId === "") body.clientId = null;
   const [row] = await db
     .update(proposalsTable)

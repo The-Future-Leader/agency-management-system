@@ -4,6 +4,8 @@ import { clientsTable, invoicesTable } from "@workspace/db/schema";
 import { eq, ilike, or, and, sql } from "drizzle-orm";
 import { asyncHandler } from "../lib/asyncHandler";
 import { createError } from "../middleware/errorHandler";
+import { validateBody } from "../lib/validation";
+import { insertClientSchema } from "@workspace/db/schema";
 
 function calcHealthScore(invoices: { status: string | null; dueDate: string | null }[]): string {
   const now = new Date();
@@ -59,7 +61,7 @@ router.get("/", asyncHandler(async (req, res) => {
 }));
 
 router.post("/", asyncHandler(async (req, res) => {
-  const { id: _id, createdAt: _ts, ...body } = req.body;
+  const body = validateBody(insertClientSchema, req.body);
   const [row] = await db.insert(clientsTable).values(body).returning();
   return res.status(201).json(row);
 }));
@@ -71,7 +73,7 @@ router.get("/:id", asyncHandler(async (req, res) => {
 }));
 
 router.patch("/:id", asyncHandler(async (req, res) => {
-  const { id: _id, createdAt: _ts, ...body } = req.body;
+  const body = validateBody(insertClientSchema.partial(), req.body);
   const [row] = await db
     .update(clientsTable)
     .set(body)

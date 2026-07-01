@@ -6,6 +6,8 @@ import { invoicesTable, clientsTable, invoiceTemplatesTable } from "@workspace/d
 import { eq, desc, sql } from "drizzle-orm";
 import { asyncHandler } from "../lib/asyncHandler";
 import { createError } from "../middleware/errorHandler";
+import { validateBody } from "../lib/validation";
+import { insertInvoiceSchema } from "@workspace/db/schema";
 
 const router = Router();
 
@@ -82,7 +84,7 @@ router.get("/", asyncHandler(async (req, res) => {
 }));
 
 router.post("/", asyncHandler(async (req, res) => {
-  const { id: _id, createdAt: _ts, ...body } = req.body;
+  const body = validateBody(insertInvoiceSchema, req.body);
   if (!body.clientId) body.clientId = null;
   if (typeof body.total !== "undefined" && typeof body.total !== "number") throw createError("total must be a number", 400);
   if (!body.clientId) body.clientId = null;
@@ -100,7 +102,7 @@ router.post("/", asyncHandler(async (req, res) => {
 }));
 
 router.patch("/:id", asyncHandler(async (req, res) => {
-  const { id: _id, createdAt: _ts, ...body } = req.body;
+  const body = validateBody(insertInvoiceSchema.partial(), req.body);
   if (body.clientId === "") body.clientId = null;
   if (body.total && typeof body.total !== "number") throw createError("total must be a number", 400);
   if (body.clientId === "") body.clientId = null;

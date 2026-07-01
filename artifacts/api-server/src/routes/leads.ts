@@ -4,6 +4,8 @@ import { leadsTable } from "@workspace/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { asyncHandler } from "../lib/asyncHandler";
 import { createError } from "../middleware/errorHandler";
+import { validateBody } from "../lib/validation";
+import { insertLeadSchema } from "@workspace/db/schema";
 
 const router = Router();
 
@@ -90,7 +92,7 @@ router.get("/forecast", asyncHandler(async (_req, res) => {
 }));
 
 router.post("/", asyncHandler(async (req, res) => {
-  const { id: _id, createdAt: _ts, ...body } = req.body;
+  const body = validateBody(insertLeadSchema, req.body);
   const [row] = await db
     .insert(leadsTable)
     .values({ ...body, stageChangedAt: new Date() })
@@ -99,7 +101,7 @@ router.post("/", asyncHandler(async (req, res) => {
 }));
 
 router.patch("/:id", asyncHandler(async (req, res) => {
-  const { id: _id, createdAt: _ts, ...body } = req.body;
+  const body = validateBody(insertLeadSchema.partial(), req.body);
   const updates: Record<string, unknown> = { ...body };
   if (body.stage) updates.stageChangedAt = new Date();
   const [row] = await db

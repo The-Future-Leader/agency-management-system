@@ -44,6 +44,18 @@ export default defineConfig({
     strictPort: true,
     host: "0.0.0.0",
     allowedHosts: true,
+    // In Replit, the browser connects through an HTTPS proxy on port 443.
+    // Vite's default HMR tries to open a WebSocket on the internal port (5000),
+    // which the browser cannot reach. We point the HMR client to the public
+    // Replit domain on port 443 (wss) so it goes through the proxy instead.
+    hmr: process.env.REPLIT_DEV_DOMAIN
+      ? {
+          // Strip any accidental scheme/path — Vite expects a bare hostname.
+          host: process.env.REPLIT_DEV_DOMAIN.replace(/^https?:\/\//, "").split("/")[0],
+          clientPort: 443,
+          protocol: "wss",
+        }
+      : true,
     fs: {
       strict: true,
     },

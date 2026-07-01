@@ -147,22 +147,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 {group.items.map((item) => {
                   const isActive = location === item.href || location.startsWith(item.href + "/");
                   return (
-                    <Link key={item.href} href={item.href}>
-                      <a
-                        data-testid={`nav-${item.href.replace("/", "")}`}
-                        className={cn(
-                          "flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 group",
-                          isActive
-                            ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
-                            : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                        )}
-                      >
-                        <span className={cn(isActive ? "text-current" : "text-muted-foreground group-hover:text-current")}>
-                          {item.icon}
-                        </span>
-                        {item.label}
-                        {isActive && <ChevronRight className="h-3 w-3 ml-auto opacity-60" />}
-                      </a>
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      data-testid={`nav-${item.href.replace("/", "")}`}
+                      className={cn(
+                        "flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 group",
+                        isActive
+                          ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
+                          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      )}
+                    >
+                      <span className={cn(isActive ? "text-current" : "text-muted-foreground group-hover:text-current")}>
+                        {item.icon}
+                      </span>
+                      {item.label}
+                      {isActive && <ChevronRight className="h-3 w-3 ml-auto opacity-60" />}
                     </Link>
                   );
                 })}

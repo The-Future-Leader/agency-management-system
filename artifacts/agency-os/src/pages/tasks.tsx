@@ -52,7 +52,8 @@ export default function TasksPage() {
   const [defaultStatus, setDefaultStatus] = useState("TODO");
   const [dragging, setDragging] = useState<string | null>(null);
 
-  const { data: tasks, isLoading } = useListTasks();
+  const { data: tasksData, isLoading } = useListTasks();
+  const tasks = Array.isArray(tasksData) ? tasksData : (tasksData as any)?.items ?? [];
   const { data: projects } = useListProjects();
   const { data: users } = useListUsers();
 

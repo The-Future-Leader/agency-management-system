@@ -82,7 +82,8 @@ export default function ClientDetailPage({ id }: { id: string }) {
   const { data: client, isLoading } = useGetClient(id);
   const { data: contracts } = useGetClientContracts(id);
   const { data: allProjects } = useListProjects();
-  const { data: allInvoices } = useListInvoices();
+  const { data: allInvoicesData } = useListInvoices();
+  const allInvoices = Array.isArray(allInvoicesData) ? allInvoicesData : (allInvoicesData as any)?.items ?? [];
 
   const { data: activityLogs, refetch: refetchActivity } = useQuery<ActivityLog[]>({
     queryKey: ["client-activity", id],

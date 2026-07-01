@@ -182,7 +182,8 @@ function QuotationEditor({
   onSaved: () => void;
 }) {
   const qc = useQueryClient();
-  const { data: clients } = useListClients();
+  const { data: clientsData } = useListClients();
+  const clients = Array.isArray(clientsData) ? clientsData : (clientsData as any)?.items ?? [];
   const [showShipping, setShowShipping] = useState(!!(existing?.shippingAddress as string));
 
   const createMutation = useCreateQuotation({

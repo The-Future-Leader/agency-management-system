@@ -57,7 +57,8 @@ export default function ProjectsPage() {
   const [editId, setEditId] = useState<string | null>(null);
 
   const { data: projects, isLoading } = useListProjects();
-  const { data: clients } = useListClients();
+  const { data: clientsData } = useListClients();
+  const clients = Array.isArray(clientsData) ? clientsData : (clientsData as any)?.items ?? [];
 
   const createMutation = useCreateProject({
     mutation: {

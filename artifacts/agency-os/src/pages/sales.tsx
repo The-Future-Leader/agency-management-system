@@ -122,7 +122,8 @@ export default function SalesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [activeLead, setActiveLead] = useState<any | null>(null);
 
-  const { data: leads, isLoading } = useListLeads();
+  const { data: leadsData, isLoading } = useListLeads();
+  const leads = Array.isArray(leadsData) ? leadsData : (leadsData as any)?.items ?? [];
   const { data: pipeline } = useGetPipelineSummary();
 
   const createMutation = useCreateLead({

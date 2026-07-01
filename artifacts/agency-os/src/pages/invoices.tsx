@@ -117,7 +117,8 @@ function saveBiz(data: BuilderForm) {
 
 function InvoiceBuilder({ onBack, editData }: { onBack: () => void; editData?: Record<string, unknown> | null }) {
   const qc = useQueryClient();
-  const { data: clients } = useListClients();
+  const { data: clientsData } = useListClients();
+  const clients = Array.isArray(clientsData) ? clientsData : (clientsData as any)?.items ?? [];
   const logoRef = useRef<HTMLInputElement>(null);
   const sigRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
@@ -662,7 +663,8 @@ export default function InvoicesPage() {
   const [editInvoice, setEditInvoice] = useState<Record<string, unknown> | null>(null);
   const [statusFilter, setStatusFilter] = useState("ALL");
 
-  const { data: invoices, isLoading } = useListInvoices();
+  const { data: invoicesData, isLoading } = useListInvoices();
+  const invoices = Array.isArray(invoicesData) ? invoicesData : (invoicesData as any)?.items ?? [];
   const { data: summary, isLoading: summaryLoading } = useGetFinancialSummary();
 
   const updateStatus = async (id: string, status: string) => {

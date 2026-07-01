@@ -109,7 +109,8 @@ export default function ContentPage() {
   const commentInputRef = useRef<HTMLInputElement>(null);
 
   const month = format(currentMonth, "yyyy-MM");
-  const { data: clients } = useListClients();
+  const { data: clientsData } = useListClients();
+  const clients = Array.isArray(clientsData) ? clientsData : (clientsData as any)?.items ?? [];
   const { data: posts, isLoading } = useListContentPosts({
     clientId: activeClientId || undefined,
     month,

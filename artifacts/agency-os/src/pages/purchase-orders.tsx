@@ -60,7 +60,8 @@ export default function PurchaseOrdersPage() {
   const [statusFilter, setStatusFilter] = useState("ALL");
 
   const { data: orders, isLoading } = useListPurchaseOrders();
-  const { data: clients } = useListClients({});
+  const { data: clientsData } = useListClients({});
+  const clients = Array.isArray(clientsData) ? clientsData : (clientsData as any)?.items ?? [];
 
   const createMutation = useCreatePurchaseOrder({
     mutation: {

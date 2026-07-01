@@ -75,7 +75,8 @@ export default function ClientPortalPage({ clientId }: { clientId: string }) {
 
   const { data: client, isLoading: clientLoading } = useGetClient(clientId);
   const { data: posts, isLoading: postsLoading } = useListContentPosts({ clientId, month });
-  const { data: allInvoices, isLoading: invLoading } = useListInvoices();
+  const { data: allInvoicesData, isLoading: invLoading } = useListInvoices();
+  const allInvoices = Array.isArray(allInvoicesData) ? allInvoicesData : (allInvoicesData as any)?.items ?? [];
   const { data: allProjects, isLoading: projLoading } = useListProjects();
   const { data: allProposals, isLoading: propLoading } = useListProposals();
 

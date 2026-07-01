@@ -80,7 +80,8 @@ export default function HawanHubPage() {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: clients } = useListClients();
+  const { data: clientsData } = useListClients();
+  const clients = Array.isArray(clientsData) ? clientsData : (clientsData as any)?.items ?? [];
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
